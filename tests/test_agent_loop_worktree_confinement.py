@@ -139,6 +139,79 @@ def test_disjoint_excludes_shared_context_only_files() -> None:
     assert agent_loop.assert_claimed_files_disjoint(leases) == []
 
 
+def test_disjoint_mixed_claim_compares_real_files_only() -> None:
+    # ADR 0095 PR-F (codex+architect 2026-06-04): _active_task_context_files prepends tasks/queue.md
+    # to EVERY task's claim set, so real claims are always MIXED ({queue.md, <real file>}). Two tasks
+    # touching DIFFERENT real files must be judged disjoint -- queue.md is shared by design and must be
+    # subtracted PER FILE, not retained because the set is not wholly context-only. Without the
+    # per-file filter this falsely overlaps on queue.md and silently degrades the X>1 pool to serial.
+    queue = agent_loop.QUEUE_PATH.as_posix()
+    leases = [
+        _write_lease("L1", [queue, "rag_core.py"]),
+        _write_lease("L2", [queue, "rag_answer.py"]),
+    ]
+    assert agent_loop.assert_claimed_files_disjoint(leases) == []
+
+
+def test_disjoint_mixed_claim_still_blocks_real_file_conflict() -> None:
+    # The per-file context filter must NOT mask a genuine real-file conflict: two tasks that both
+    # claim rag_core.py (alongside the shared queue.md) still overlap, and the blocker names the REAL
+    # file -- never queue.md (which is shared by design and filtered out before comparison).
+    queue = agent_loop.QUEUE_PATH.as_posix()
+    leases = [
+        _write_lease("L1", [queue, "rag_core.py"]),
+        _write_lease("L2", [queue, "rag_core.py"]),
+    ]
+    blockers = agent_loop.assert_claimed_files_disjoint(leases)
+    assert len(blockers) == 1
+    assert "rag_core.py" in blockers[0]
+    assert queue not in blockers[0]
+
+
+def test_teardown_cannot_delete_branch_checked_out_elsewhere(tmp_path: Path) -> None:
+    """ADR 0095 PR-F (codex+architect 2026-06-04): at the X=2 default, two concurrent runs (distinct
+    worktrees of ONE clone) share the ``agent/<task>/cycle`` BRANCH namespace. Pin the invariant that
+    a second run which lost the worktree-create race CANNOT destroy the winner's in-flight cycle:
+    teardown's ``worktree remove`` is path-scoped to the caller's ``repo_root`` (so it can only name a
+    path IT created) and ``git branch -D`` refuses a branch checked out in another worktree. The
+    winner's worktree + committed work survive; the loser's teardown fails loudly into warnings. This
+    is the real-git proof behind Finding 1's NOT-REACHABLE verdict (codex flagged it as a cross-process
+    deletion risk; the safety rests on git behavior, so we pin it rather than leave it implicit).
+    """
+    def _git(*args, cwd: Path) -> "subprocess.CompletedProcess[str]":
+        return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True)
+
+    main = tmp_path / "main"
+    main.mkdir()
+    _git("init", "-b", "main", cwd=main)
+    _git("config", "user.email", "t@t", cwd=main)
+    _git("config", "user.name", "t", cwd=main)
+    (main / "f.txt").write_text("base\n", encoding="utf-8")
+    _git("add", "f.txt", cwd=main)
+    _git("commit", "-m", "base", cwd=main)
+
+    task_id = "T-2026-0001"
+    # Winner run A creates its cycle worktree + branch (real git, default runner).
+    path_a, branch, blockers_a = agent_loop.create_task_cycle_worktree(task_id, base="main", repo_root=main)
+    assert blockers_a == [] and path_a.exists()
+    # In-flight work committed inside A's cycle worktree.
+    (path_a / "work.txt").write_text("A in flight\n", encoding="utf-8")
+    _git("add", "work.txt", cwd=path_a)
+    _git("commit", "-m", "A work", cwd=path_a)
+    head_a = _git("rev-parse", "HEAD", cwd=path_a).stdout.strip()
+
+    # Loser run B is a SECOND worktree of the same clone (distinct repo_root, shared branch namespace).
+    repo_b = tmp_path / "runB"
+    _git("worktree", "add", "-b", "runB-base", str(repo_b), "main", cwd=main)
+    # B tears down the SAME task_id (its own create lost the race). Must NOT touch A's worktree/branch.
+    warnings = agent_loop.teardown_task_cycle_worktree(task_id, repo_root=repo_b)
+
+    assert path_a.exists(), "winner A's cycle worktree must survive a sibling run's teardown"
+    assert _git("rev-parse", "HEAD", cwd=path_a).stdout.strip() == head_a, "A's in-flight commit must persist"
+    assert _git("rev-parse", branch, cwd=main).stdout.strip() == head_a, "the cycle branch must still point at A's work"
+    assert warnings, "B's path-scoped remove + checked-out branch -D must both fail loudly into warnings"
+
+
 # ---------------------------------------------------------------------------
 # Guard 4 (exit hygiene): commit_scratch_worktree_before_exit + teardown wiring
 # ---------------------------------------------------------------------------

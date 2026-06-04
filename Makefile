@@ -512,15 +512,16 @@ ACTIVE_GLOBAL_CONCURRENCY ?= 8
 export ACTIVE_GLOBAL_CONCURRENCY
 BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY ?= $(ACTIVE_GLOBAL_CONCURRENCY)
 export BIDMATE_AGENT_LOOP_GLOBAL_CONCURRENCY
-# ADR 0095 PR-E2: X task-pool size (concurrent queue tasks in flight). Default 1 == serial ==
-# byte-identical (ADR 0001); PR-F flips this to 2. fail-closed pool<=0 -> 1. The runtime read
-# path is os.getenv("BIDMATE_AGENT_LOOP_TASK_POOL"); ACTIVE_TASK_POOL is the operator front-door
-# knob bridged to that env var below so `make ... ACTIVE_TASK_POOL=N` reaches the runtime. A
-# direct BIDMATE_AGENT_LOOP_TASK_POOL already in the env still wins (via ?=). The global
-# kill-switch (BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1) forces 1 regardless (serial demotion).
-# NOTE: PR-E2 ships the X substrate DARK — the resolved pool is additionally clamped to 1 in
-# write_active_auto_loop until PR-E3 enables real X>1 fan-out (worktree-per-task isolation lands here).
-ACTIVE_TASK_POOL ?= 1
+# ADR 0095: X task-pool size (concurrent queue tasks in flight). Default 2 == X-parallel
+# bounded-loop execution (PR-F flipped the operator default 1 -> 2, issue #1948). Serial (X=1,
+# the ADR 0001 byte-identical path) is still available via `make ... ACTIVE_TASK_POOL=1`.
+# fail-closed pool<=0 -> 1. The runtime read path is os.getenv("BIDMATE_AGENT_LOOP_TASK_POOL");
+# ACTIVE_TASK_POOL is the operator front-door knob bridged to that env var below so
+# `make ... ACTIVE_TASK_POOL=N` reaches the runtime. A direct BIDMATE_AGENT_LOOP_TASK_POOL already
+# in the env still wins (via ?=). The global kill-switch (BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1)
+# forces 1 regardless (serial demotion). PR-E3c enabled the real X>1 fan-out (worktree-per-task
+# isolation); PR-E2's DARK effective-pool clamp was removed there.
+ACTIVE_TASK_POOL ?= 2
 export ACTIVE_TASK_POOL
 BIDMATE_AGENT_LOOP_TASK_POOL ?= $(ACTIVE_TASK_POOL)
 export BIDMATE_AGENT_LOOP_TASK_POOL

@@ -1340,17 +1340,20 @@ def _parallelism_kill_enabled() -> bool:
     return os.environ.get(PARALLELISM_KILL_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-# X task-pool size (ADR 0095 PR-E2). Default 1 == serial == byte-identical (ADR 0001 gate);
-# PR-F flips the operator default to 2 once the worktree-isolation substrate + tests are stable.
-# env BIDMATE_AGENT_LOOP_TASK_POOL (Makefile ACTIVE_TASK_POOL) overrides the default.
-DEFAULT_ACTIVE_TASK_POOL = 1
+# X task-pool size (ADR 0095). Default 2 == X-parallel bounded-loop execution (PR-F flipped the
+# operator default 1 -> 2, issue #1948, after the worktree-isolation substrate + e2e evidence test
+# landed). Serial (X=1, the ADR 0001 byte-identical path) is still available via ACTIVE_TASK_POOL=1
+# / BIDMATE_AGENT_LOOP_TASK_POOL=1, or the kill-switch BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1 (forces
+# serial). env BIDMATE_AGENT_LOOP_TASK_POOL (Makefile ACTIVE_TASK_POOL) overrides the default.
+DEFAULT_ACTIVE_TASK_POOL = 2
 TASK_POOL_ENV = "BIDMATE_AGENT_LOOP_TASK_POOL"
 
 
 def _resolve_task_pool_size(raw: str | None = None) -> int:
-    """Resolve the X task-pool size (ADR 0095 PR-E2). env BIDMATE_AGENT_LOOP_TASK_POOL
-    overrides DEFAULT (1). Unset / blank / non-int -> DEFAULT (1). fail-closed: a parsed
-    value <=0 clamps to 1 (the pool must never be 0). Byte-for-byte mirror of
+    """Resolve the X task-pool size (ADR 0095). env BIDMATE_AGENT_LOOP_TASK_POOL
+    overrides DEFAULT (2, X-parallel; PR-F flipped 1 -> 2). Unset / blank / non-int -> DEFAULT (2).
+    fail-closed: a parsed value <=0 clamps to 1 (the pool must never be 0; clamps floor at 1
+    independent of the default). Byte-for-byte mirror of
     ``_resolve_omc_max_workers`` / ``_resolve_global_concurrency``.
 
     Kill-switch (ADR 0095): when ``BIDMATE_AGENT_LOOP_PARALLELISM_KILL`` is truthy the pool is
@@ -2570,6 +2573,26 @@ def _active_task_context_files(task: TaskEntry, *, repo_root: Path) -> tuple[str
             if exists:
                 files.append(normalized)
     return tuple(_dedupe_preserve_order(files))
+
+
+def _cycle_seed_include_paths(
+    task: TaskEntry, requested_files: "Sequence[str]", *, repo_root: Path
+) -> tuple[str, ...]:
+    """The parent dirty-file footprint to seed into a task's X>1 cycle worktree.
+
+    ADR 0095 PR-F (codex 2026-06-04, Finding B). The seed must copy the SAME claimed set the lease
+    reserves — the loop-level ``requested_files`` (the run's ``changed_files`` footprint) PLUS the
+    task's active context files — so the cycle sees exactly the files THIS task claimed and NOT a
+    sibling task's (or unrelated local) dirty edits. Scoping the seed to ``_active_task_context_files``
+    alone would DROP ``requested_files`` (i.e. a parent file dirty only in ``changed_files``), so the
+    cycle would be missing its own in-flight work. This deliberately mirrors the claim footprint
+    computed in ``run_one_task`` (``context_files = requested_files + _active_task_context_files``);
+    the repo_root only rebases relative paths, which are identical parent-relative either way."""
+    return tuple(
+        _dedupe_preserve_order(
+            (*requested_files, *_active_task_context_files(task, repo_root=repo_root))
+        )
+    )
 
 
 def _task_priority(task: TaskEntry) -> str:
@@ -7844,6 +7867,29 @@ def _git_is_ancestor(ancestor: str, descendant: str, *, repo_root: Path) -> bool
     return result.returncode == 0
 
 
+def _head_matches_origin_main(repo_root: Path) -> bool:
+    """True iff HEAD resolves to the EXACT same commit as ``origin/main``.
+
+    ADR 0095 PR-F (codex 2026-06-04, round 3 + round 4). The X>1 task-pool forks each cycle worktree
+    from ``origin/main`` and seeds only the parent's DIRTY (uncommitted) files, so the cycle tree
+    matches the parent checkout ONLY when HEAD and origin/main are the same commit. ANY divergence
+    makes a cycle run against a different tree than X=1 (which runs against the parent repo directly):
+      - HEAD AHEAD of origin/main → committed-but-unpushed parent-branch work is INVISIBLE in the
+        cycle (round 3, the data-loss direction);
+      - origin/main AHEAD of HEAD → the cycle forks from NEWER code than the operator checked out, so a
+        stale HEAD silently fans out onto origin/main's tip (round 4, the stale-base direction);
+      - diverged → both at once.
+    ``write_active_auto_loop`` DEMOTES X>1 → serial unless this returns True, so cycle code-visibility
+    always equals X=1. An ancestor test is INSUFFICIENT (HEAD is an ancestor of a newer origin/main yet
+    the trees differ), so this compares resolved commit ids. FAIL-SAFE: if EITHER ref fails to resolve
+    (offline / missing origin/main) ``_git_ref`` returns None and this returns False, so the caller
+    demotes rather than forking cycles from an unverifiable base. (git guarantees a ``--short`` id is
+    unique within the repo, so equal short ids ⇔ same commit.)"""
+    head = _git_ref("HEAD", repo_root=repo_root)
+    origin_main = _git_ref("origin/main", repo_root=repo_root)
+    return head is not None and origin_main is not None and head == origin_main
+
+
 def _issue_info(issue: str, *, repo_root: Path) -> dict[str, object]:
     safe_issue = _validate_issue_selector(issue)
     try:
@@ -11297,7 +11343,7 @@ def write_active_auto_loop(
     runner_backend = runner
     # ADR 0095 PR-E2: resolve the X task-pool size through the shared resolver so the
     # kill-switch + fail-closed (pool<=0 -> 1) clamp apply whether the caller passed an int
-    # (CLI/tests) or left it None (env-driven default). ``task_pool=None`` -> env / default 1.
+    # (CLI/tests) or left it None (env-driven default). ``task_pool=None`` -> env / default 2.
     task_pool_size = _resolve_task_pool_size(None if task_pool is None else str(task_pool))
     # fcntl gating (ADR 0095 PR-E2, FailureMode "fcntl portability"): the LeaseManager flock is a
     # no-op on non-POSIX (fcntl is None), so there is NO cross-process exclusion to make X>1 safe.
@@ -11307,6 +11353,27 @@ def write_active_auto_loop(
         fcntl_clamp_warning = (
             f"task pool clamped {task_pool_size} -> 1: fcntl is unavailable on this platform so "
             "the lease flock is a no-op (no cross-process exclusion); X>1 is unsafe without it"
+        )
+        task_pool_size = 1
+    # ADR 0095 PR-F (codex 2026-06-04, round 3+4): demote X>1 -> serial unless HEAD is the EXACT same
+    # commit as origin/main. X>1 cycle worktrees fork from origin/main + seed only DIRTY files, so the
+    # cycle tree equals the parent checkout only at HEAD == origin/main. Either divergence breaks parity
+    # with X=1 (which runs against the parent repo): HEAD ahead -> committed-but-unpushed work invisible
+    # in the cycle (round 3); origin/main ahead -> cycle forks from newer code than the operator checked
+    # out, fanning a stale HEAD onto origin/main's tip (round 4). An ancestor test misses the round-4
+    # case (HEAD is an ancestor of a newer origin/main), so we compare commit ids. Checked ONCE at start:
+    # within-run task commits stay safe at X>1 (the lease enforces claimed-file disjointness); only the
+    # PRE-RUN checkout state is the hazard. FAIL-SAFE (either ref unresolved -> _head_matches_origin_main
+    # False -> demote). Like the fcntl clamp this is a correctness guard, not a preference, so it applies
+    # even to an explicit knob value; sync HEAD to origin/main (push/merge or pull) to re-enable X>1.
+    branch_ahead_clamp_warning: str | None = None
+    if task_pool_size > 1 and not _head_matches_origin_main(repo_root):
+        branch_ahead_clamp_warning = (
+            f"task pool clamped {task_pool_size} -> 1: HEAD is not at origin/main (ahead, behind, or "
+            "diverged — or a ref is unresolved); X>1 cycle worktrees fork from origin/main and seed only "
+            "dirty files, so they would run against a different tree than X=1 (which uses the parent "
+            "checkout). Running serial to match X=1 visibility — sync HEAD to origin/main (push/merge or "
+            "pull) to re-enable X>1"
         )
         task_pool_size = 1
     # ADR 0095 PR-E3c enables the real X>1 fan-out: the resolved ``task_pool_size`` (knob value,
@@ -11328,6 +11395,8 @@ def write_active_auto_loop(
     warnings = _ThreadSafeWarningList(_prior_warnings)
     if fcntl_clamp_warning is not None:
         warnings.append(fcntl_clamp_warning)
+    if branch_ahead_clamp_warning is not None:
+        warnings.append(branch_ahead_clamp_warning)
     ledger = LedgerState(completed=prior_completed, deferred=prior_deferred)
     completed = ledger.completed
     deferred_task_ids = ledger.deferred
@@ -12305,6 +12374,11 @@ def write_active_auto_loop(
             on_stop=stop_event.set,
             append_warnings=lambda ws: warnings.extend(ws),
             git_runner=None,
+            # Finding B (codex 2026-06-04): scope the cycle seed to THIS task's claimed footprint —
+            # the SAME requested_files + context files the lease reserves (NOT context files alone,
+            # which would drop changed_files-only edits) — so a sibling task's (or unrelated local)
+            # dirty parent edits never leak into this cycle at X>1.
+            seed_include_paths=_cycle_seed_include_paths(task, requested_files, repo_root=repo_root),
         )
 
     # X task-pool driver (ADR 0095 PR-E2). ``ThreadPoolExecutor(max_workers=effective_task_pool_size)``.
@@ -17792,9 +17866,9 @@ def assert_claimed_files_disjoint(
     When several worktree agents run at once, two lanes claiming the same file means their
     edits race onto the same path — exactly the kind of overlap that lets one lane's work
     clobber another's. This enforces a pairwise empty intersection across every active write
-    lease's ``claimed_files``. Context-only claims (queue / plans / agent_loop reports) are
-    excluded because those coordination files are intentionally shared across lanes (same rule
-    as ``_context_only_claimed_files``).
+    lease's ``claimed_files``. Context-only paths (queue / plans / agent_loop reports) are
+    subtracted PER FILE (``_is_context_only_path``) because those coordination files are
+    intentionally shared across lanes — see the inline note for why per-file, not whole-set.
 
     Returns a list of blocker strings (empty == disjoint). A single active write lease is
     trivially disjoint. Never raises.
@@ -17807,8 +17881,13 @@ def assert_claimed_files_disjoint(
             continue
         claimed_raw = lease.get("claimed_files")
         claimed = {str(f) for f in claimed_raw} if isinstance(claimed_raw, list) else set()
-        # Context-only coordination files are shared by design — never an overlap conflict.
-        files = {f for f in claimed if f} if not _context_only_claimed_files(claimed) else set()
+        # Context-only coordination files (tasks/queue.md, docs/plans/, reports/agent_loop/) are
+        # shared across lanes BY DESIGN, so subtract them PER FILE. A whole-set check (drop only when
+        # EVERY claimed file is context-only) would leave tasks/queue.md in every MIXED claim — and
+        # _active_task_context_files prepends tasks/queue.md to EVERY task's claim set, so two
+        # genuinely-disjoint tasks would then falsely overlap on queue.md, silently degrading the X>1
+        # task pool to serial + emitting spurious blockers (ADR 0095 PR-F; codex+architect 2026-06-04).
+        files = {f for f in claimed if f and not _is_context_only_path(f)}
         if files:
             scoped.append((str(lease.get("lease_id") or "<unknown>"), files))
     blockers: list[str] = []
@@ -18109,7 +18188,17 @@ def teardown_task_cycle_worktree(
     Mirrors ``teardown_scratch_worktree`` for the ``{task_id}-cycle`` naming: before the
     destructive ``--force`` removal it commits any uncommitted cycle state via the shared
     ``commit_scratch_worktree_before_exit`` (exit hygiene, issue #1719) so an aborted/errored
-    cycle cannot silently lose work. Returns warnings (never raises)."""
+    cycle cannot silently lose work. Returns warnings (never raises).
+
+    Cross-process safety (ADR 0095 PR-F; codex+architect 2026-06-04): the X=2 default means
+    concurrent ``make 시작`` runs (distinct worktrees of one clone) share the ``agent/<task>/cycle``
+    BRANCH namespace but NOT the worktree PATH — ``worktree remove`` targets
+    ``_task_cycle_worktree_paths(..., repo_root=repo_root)``, scoped to THIS run's ``repo_root``, so a
+    run can only remove a path it created. And ``git branch -D`` refuses to delete a branch checked
+    out in ANOTHER worktree, so a run that lost the create race (branch already exists) cannot delete
+    the winner's in-flight branch either — both ops fail loudly into ``warnings`` and the winner's
+    work survives. Pinned by
+    ``tests/test_agent_loop_worktree_confinement.py::test_teardown_cannot_delete_branch_checked_out_elsewhere``."""
     run = runner or _git_worktree_runner
     path, branch = _task_cycle_worktree_paths(task_id, repo_root=repo_root)
     warnings: list[str] = []
@@ -18245,6 +18334,7 @@ def _run_cycle_in_task_worktree(
     on_stop: "Callable[[], None]",
     append_warnings: "Callable[[Sequence[str]], None]",
     git_runner=None,
+    seed_include_paths: "Sequence[str] | None" = None,
 ) -> None:
     """Run one task cycle inside an isolated per-task worktree (ADR 0095 PR-E2).
 
@@ -18267,12 +18357,23 @@ def _run_cycle_in_task_worktree(
             task_id, repo_root=parent_root, runner=git_runner
         )
     if wt_blockers:
-        # Could not isolate this task -> route through the blocker guard (fail-closed); never fall
-        # back to running the cycle against the shared parent root (that is the race E2 removes).
+        # ADR 0095 PR-F (codex 2026-06-04, Finding A): a create failure must NEVER teardown the cycle
+        # path. We cannot prove that path is OUR partial-create debris vs (a) a sibling run's LIVE
+        # worktree or (b) a mirror-failure-preserved recovery worktree. A "delete only if it didn't
+        # pre-exist" probe does NOT close the gap: the probe→create window is a TOCTOU race — the path
+        # can be absent when we probe yet created by a sibling immediately before our ``git worktree
+        # add`` fails, so we would still delete a sibling's worktree. So preserve UNCONDITIONALLY and
+        # route a recovery blocker (fail-closed). Genuinely-stale OUR-OWN debris is reclaimed
+        # out-of-band by ``git worktree prune`` / manual GC — never by this create-failure path. Never
+        # fall back to running the cycle against the shared parent root (the race E2 removes).
         append_warnings(wt_blockers)
-        teardown_warnings = teardown_task_cycle_worktree(task_id, repo_root=parent_root, runner=git_runner)
-        append_warnings(teardown_warnings)
-        if register_blocker([f"{task_id}: {item}" for item in wt_blockers]):
+        recovery_msg = (
+            f"{task_id}: task cycle worktree create failed; the cycle path is preserved (not torn "
+            "down — ownership unprovable, may be a sibling/recovery worktree). Manual recovery / "
+            "`git worktree prune` required."
+        )
+        append_warnings([recovery_msg])
+        if register_blocker([recovery_msg]):
             on_stop()
         return
     # ADR 0095 PR-E2 Finding 4 (MED): the try/finally starts IMMEDIATELY after a successful create
@@ -18281,8 +18382,13 @@ def _run_cycle_in_task_worktree(
     try:
         # Seed the worktree from the parent (copy task queue, context files, etc.). Run inside the
         # try so a seed failure still flows through the finally teardown.
+        # ADR 0095 PR-F (codex 2026-06-04, Finding B): scope the seed to THIS task's context/claimed
+        # files (``seed_include_paths``). Unscoped, the seed copies EVERY dirty parent file into the
+        # cycle, so at the X=2 default two unrelated tasks (plus any local/staged parent edits) would
+        # inherit each other's uncommitted state — breaking claimed-file disjointness. ``None``
+        # preserves the legacy copy-all (e.g. the patch write-lane already scopes via its own caller).
         _seeded, seed_warnings = seed_scratch_worktree_from_parent(
-            cycle_path, repo_root=parent_root, runner=git_runner
+            cycle_path, repo_root=parent_root, runner=git_runner, include_paths=seed_include_paths
         )
         append_warnings(seed_warnings)
         # Guards 1+2 (issue #1719): before any write-lane spawn, prove the cycle lane is confined to
@@ -19413,15 +19519,23 @@ def _diff_files(diff_text: str) -> list[str]:
     return files
 
 
-def _context_only_claimed_files(files: set[str]) -> bool:
-    if not files:
-        return False
-    return all(
+def _is_context_only_path(path: str) -> bool:
+    """True for a single coordination/context path that is shared across lanes BY DESIGN
+    (``tasks/queue.md``, plan docs under ``docs/plans/``, agent-loop reports under
+    ``reports/agent_loop/``) and is therefore never an exclusive write target. Applied PER FILE
+    by ``assert_claimed_files_disjoint`` so a MIXED claim like ``{tasks/queue.md, rag_core.py}``
+    compares on ``{rag_core.py}`` only (ADR 0095 PR-F)."""
+    return (
         path == QUEUE_PATH.as_posix()
         or path.startswith("docs/plans/")
         or path.startswith("reports/agent_loop/")
-        for path in files
     )
+
+
+def _context_only_claimed_files(files: set[str]) -> bool:
+    if not files:
+        return False
+    return all(_is_context_only_path(path) for path in files)
 
 
 def _diffstat(diff_text: str) -> dict[str, int]:
@@ -21186,9 +21300,10 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop.add_argument("--write-agent", choices=("auto", "codex", "claude"), default="auto")
     auto_loop.add_argument("--runner", choices=("codex", "omc"), default="codex", help="Parallel-execution backend (ADR 0087); default codex is byte-identical. omc delegates to `omc team` (opt-in, requires ACTIVE_OMC_RUNNER_ACK=1 — uncontrolled workers relax the ADR 0005 boundary).")
     auto_loop.add_argument("--max-parallel", type=int, default=8)
-    # ADR 0095 PR-E2: X task-pool size. The default is RESOLVED FROM ENV (BIDMATE_AGENT_LOOP_TASK_POOL,
-    # Makefile ACTIVE_TASK_POOL) so the operator front door stays the SSoT, falling back to 1
-    # (serial == byte-identical, ADR 0001) when unset. PR-F flips the operator default to 2. The
+    # ADR 0095: X task-pool size. The default is RESOLVED FROM ENV (BIDMATE_AGENT_LOOP_TASK_POOL,
+    # Makefile ACTIVE_TASK_POOL) so the operator front door stays the SSoT, falling back to 2
+    # (X-parallel; PR-F flipped the operator default 1 -> 2, issue #1948) when unset. Serial
+    # (X=1, the ADR 0001 byte-identical path) is still available via ACTIVE_TASK_POOL=1; the
     # kill-switch (BIDMATE_AGENT_LOOP_PARALLELISM_KILL=1) forces 1 inside _resolve_task_pool_size.
     # PR-E2 shipped the substrate dark behind an EFFECTIVE-pool clamp; PR-E3c removed that clamp so
     # a resolved >1 now drives real X>1 fan-out (worktree-per-task isolation).
