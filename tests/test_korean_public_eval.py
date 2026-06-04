@@ -78,6 +78,30 @@ def test_sample_korquad_strips_html_and_dedupes_articles() -> None:
     assert "운영자 교육 자료" in article_a["context"]
 
 
+def test_sample_korquad_uses_answers_list_fallback() -> None:
+    raw = {
+        "version": "tiny",
+        "data": [
+            {
+                "title": "기관_C",
+                "context": "기관 C는 데이터 품질 점검표를 제출한다.",
+                "qas": [
+                    {
+                        "id": "tiny_c_1",
+                        "question": "기관 C의 제출물은?",
+                        "answers": [
+                            {"text": ""},
+                            {"text": "데이터 품질 점검표", "answer_start": 0},
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    payload = fetch_korquad.sample_korquad(raw, sample_size=1, seed=17)
+    assert payload["questions"][0]["answer_text"] == "데이터 품질 점검표"
+
+
 def test_sample_korquad_is_deterministic() -> None:
     a = fetch_korquad.sample_korquad(_tiny_korquad_raw(), sample_size=3, seed=17)
     b = fetch_korquad.sample_korquad(_tiny_korquad_raw(), sample_size=3, seed=17)
