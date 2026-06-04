@@ -136,6 +136,17 @@ class FalsePositiveGuardTest(unittest.TestCase):
         "오전 10시",
         "2024년",  # year alone is not money
         "약 30%",  # percent, not amount
+        # issue #2228: a bare-body Korean numeral ending in an envelope glyph
+        # ('정') is an ordinary noun, not money. Before the fix the bare-body
+        # branch accepted a lone 정 suffix, so parse_amounts('일정') returned
+        # [ParsedAmount(value=1)] and normalize_text('일정')=='1'.
+        "일정",  # 일(1) + 정(envelope strip) — a very common RFP word
+        "추진일정",
+        "세부일정",
+        "일정표",
+        "삼정",
+        "구정",  # 설날(舊正)
+        "이정표",  # 이(2) + 정
     ]
 
     DATE_NEGATIVES = [
@@ -288,6 +299,21 @@ class EndToEndVerifyEvidenceTest(unittest.TestCase):
         # topics must NOT match.
         item = _evidence_item("기관 A 예산은 5천만원이다.")
         self.assertFalse(evidence_has_topic(item, ["완전히다른토픽xyz"]))
+
+    def test_jeong_noun_topic_does_not_false_match_bare_digit(self) -> None:
+        # issue #2228: a '일정'(schedule) topic must NOT be grounded by
+        # evidence that merely contains a bare digit '1'. Before the fix
+        # normalize_text('일정')=='1' injected '1' into expand_forms('일정'),
+        # so any document with a '1' (1차/1명/12월/제1조) false-matched and
+        # the #1008 single-doc grounding floor was bypassed for this very
+        # common RFP term.
+        self.assertEqual(["일정"], expand_forms("일정"))
+        item = _evidence_item("담당자는 1명이며 12월에 시작합니다.")  # no '일정', has '1'
+        self.assertFalse(evidence_has_topic(item, ["일정"]))
+        verified, reasons = verify_evidence(self._analysis(["일정"]), [item])
+        self.assertFalse(
+            verified, f"expected not grounded, got reasons={reasons}"
+        )
 
     def test_canonical_iso_date_matches_korean_date_evidence(self) -> None:
         # Query topic "2026-03-15" (canonical) must match evidence written

@@ -158,22 +158,28 @@ class FollowUpRetrievalAnchorRegressionTest(unittest.TestCase):
         # Pre-#71 the resolved_query was just the user's input.
         self.assertNotEqual(resolved_query, "그럼 일정은 어떻게 돼?")
 
-    def test_follow_up_still_resolves_to_correct_doc(self) -> None:
-        # Sanity: the metadata-first path still drives this case to
-        # the right agency on synthetic data. The fix is purely
-        # additive — it gives the entity anchor to dense/lexical
-        # scoring without changing what already worked.
+    def test_follow_up_abstains_when_doc_lacks_schedule(self) -> None:
+        # The smoke fixture (AI-quality RFP) carries no 일정(schedule)
+        # content, so a '일정' follow-up must honestly abstain — ADR 0003
+        # treats abstention as a first-class status, not an error.
+        #
+        # This previously asserted status == "supported" with evidence
+        # from rfp-agency-a-ai-quality, but that grounding was a #2228
+        # artefact: normalize_text('일정') == '1' injected '1' into
+        # expand_forms('일정'), so the verifier false-matched the
+        # document's bare digit '1' as schedule evidence. With the fix
+        # expand_forms('일정') == ['일정'] and the verifier correctly
+        # finds no grounding, clearing the evidence pool.
+        #
+        # The #71 entity-injection guard is covered independently by
+        # test_resolved_query_contains_entity_anchor above.
         result = run_rag_query(
             self.index,
             "그럼 일정은 어떻게 돼?",
             context_entities=["기관 A"],
         )
-        self.assertEqual(result["answer"]["status"], "supported")
-        evidence = result.get("evidence", [])
-        self.assertTrue(evidence)
-        self.assertEqual(
-            evidence[0]["doc_id"], "rfp-agency-a-ai-quality"
-        )
+        self.assertEqual(result["answer"]["status"], "insufficient")
+        self.assertEqual(result.get("evidence", []), [])
 
 
 if __name__ == "__main__":

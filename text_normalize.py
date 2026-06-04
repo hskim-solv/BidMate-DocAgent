@@ -80,13 +80,20 @@ _HANGUL_NUMBER_SECTIONED = (
 )
 # Trailing money-unit suffix. 정 must NOT be followed by 도 (그것은 '정도' approximation marker).
 _HANGUL_MONEY_SUFFIX = r"(?:\s*원\s*정|\s*원|\s*정(?!도))"
+# Bare-body suffix (issue #2228): the bare-body branch carries no section marker
+# (만/억/조), so allowing a lone 정 anchor lets pure digit-words be misread as
+# money — `일정`(일=1, 정=envelope strip) → `1`, which poisons verifier topic
+# grounding (`expand_forms('일정')==['일정','1']` then false-matches any document
+# containing a `1`). Require an explicit 원 unit here; the sectioned branch keeps
+# 정 so real amounts like `일금일억정`=100000000 are preserved.
+_HANGUL_MONEY_SUFFIX_BARE = r"(?:\s*원\s*정|\s*원)"
 
 _HANGUL_MONEY_RE = re.compile(
     r"(?:일금\s*)?"
     r"(?:"
     rf"{_HANGUL_NUMBER_SECTIONED}{_HANGUL_MONEY_SUFFIX}?"  # sectioned (anchor = section)
     r"|"
-    rf"{_HANGUL_MYRIAD_BODY}{_HANGUL_MONEY_SUFFIX}"        # bare body (anchor = 원/정)
+    rf"{_HANGUL_MYRIAD_BODY}{_HANGUL_MONEY_SUFFIX_BARE}"   # bare body (anchor = 원, #2228)
     r")"
 )
 
