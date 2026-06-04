@@ -113,3 +113,57 @@ def test_non_allowlisted_category_is_not_mineable() -> None:
             "signals": ["would be too unconstrained"],
         }
     )
+
+
+def test_string_signals_is_not_mineable() -> None:
+    # signals must be a non-string Sequence. A bare string would otherwise satisfy
+    # a naive truthiness check and then be iterated character-by-character into the
+    # acceptance contract, so is_mineable rejects it outright.
+    mining = load_module("agent-evals/adapters/bidmate/task_mining.py", "agent_evals_task_mining_str_signals_test")
+
+    assert not mining.is_mineable(
+        {
+            "number": 1500,
+            "merged": True,
+            "category": "hook_privacy",
+            "signals": "deny-by-default guard",
+        }
+    )
+
+
+def test_empty_signals_is_not_mineable() -> None:
+    # A record with no signals carries no behavior to preserve, so it is not a
+    # usable task contract even when every other gate passes.
+    mining = load_module("agent-evals/adapters/bidmate/task_mining.py", "agent_evals_task_mining_empty_signals_test")
+
+    assert not mining.is_mineable(
+        {
+            "number": 1500,
+            "merged": True,
+            "category": "hook_privacy",
+            "signals": [],
+        }
+    )
+
+
+def test_mine_tasks_warns_when_holdout_target_exceeds_mineable_count() -> None:
+    # The holdout-target warning is a DISTINCT contract from the mineable-floor
+    # warning (existing coverage only trips the floor warning with holdout == count).
+    # When the requested holdout split is larger than the mineable set, mine_tasks
+    # must surface it so an undersized holdout is never claimed silently. Set the
+    # floor low enough to be met, isolating the holdout warning.
+    mining = load_module("agent-evals/adapters/bidmate/task_mining.py", "agent_evals_task_mining_holdout_warn_test")
+
+    tasks, summary = mining.mine_tasks(
+        [
+            {"number": 1, "merged": True, "category": "eval_guard", "signals": ["paired delta primitive"]},
+            {"number": 2, "merged": True, "category": "eval_guard", "signals": ["min-N guard"]},
+        ],
+        mineable_floor=1,
+        holdout_target=5,
+    )
+
+    assert len(tasks) == 2
+    assert summary.mineable_count == 2
+    assert summary.holdout_target == 5
+    assert summary.warnings == ("holdout target exceeds mineable count: 5 > 2",)
