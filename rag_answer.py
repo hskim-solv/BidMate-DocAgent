@@ -94,6 +94,17 @@ _AGGREGATE_SIGNALS: frozenset[str] = frozenset({
     "전부",    # all / entirety
 })
 
+# Noun-deriving suffixes (issue #2179): when an aggregate signal is immediately
+# followed by one of these, the match is a compound noun (전체성/목록화/정리율/
+# 일체형), not aggregate intent. Real aggregate phrases put a space, a verb
+# ending (전부다/정리해줘), or a compound-noun part (전체일정) after the signal —
+# never a bare nominalizer — so they stay detected by the substring fallback.
+_NOMINALIZER_SUFFIXES: frozenset[str] = frozenset("성화율률형")
+# 하다-verbalizer heads (issue #2179, Codex review): a nominalizer suffix that is
+# re-verbed by 하다 (목록화해줘/전체화하라) restores aggregate ("make a list of …")
+# intent, so it must NOT be guarded out — only the bare nominal noun (목록화) is.
+_VERBALIZER: frozenset[str] = frozenset("하해한할함했")
+
 # Pool ceiling for aggregate queries. Covers the typical multi-field
 # case where budget + duration + deadline live in separate chunks.
 _AGGREGATE_POOL_MAX: int = 5
@@ -531,15 +542,37 @@ def _is_aggregate_query(analysis: dict[str, Any]) -> bool:
     Detects tokens such as "모든" / "전체" / "정리" that indicate the
     user wants an exhaustive listing of all matching fields — not just
     the first matching chunk.  Checked against ``analysis["tokens"]``
-    (tokenised resolved query) and ``analysis["resolved_query"]`` as
-    a substring fallback for tokens the analyser may have merged or
-    split differently.
+    (tokenised resolved query) for an exact match, then ``resolved_query``
+    as a substring fallback for aggregates the tokeniser merged into a
+    compound token (전체일정/전부다).
     """
     resolved: str = analysis.get("resolved_query") or ""
     tokens: list[str] = analysis.get("tokens") or []
-    return any(sig in resolved for sig in _AGGREGATE_SIGNALS) or any(
-        sig in tokens for sig in _AGGREGATE_SIGNALS
-    )
+    # Exact token match is unambiguous — the precise primary path.
+    if any(sig in tokens for sig in _AGGREGATE_SIGNALS):
+        return True
+    # Substring fallback (#2170 recall) with a compound-noun guard (#2179): a
+    # signal occurrence counts only when it is NOT immediately followed by a
+    # nominalizer suffix (성/화/율/률/형). 전체성/목록화/정리율/일체형 are guarded
+    # out as compound nouns; 전체일정/전부다/정리해줘 (compound part, verb ending,
+    # or trailing space after the signal) stay detected, preserving #2170's
+    # recall for tokeniser-merged aggregate phrases.
+    for sig in _AGGREGATE_SIGNALS:
+        idx = resolved.find(sig)
+        while idx != -1:
+            after = idx + len(sig)
+            if after >= len(resolved) or resolved[after] not in _NOMINALIZER_SUFFIXES:
+                return True  # signal at end, or a non-nominalizer follows it
+            # A nominalizer suffix follows. Only ~화 naturally re-verbs with 하다
+            # (목록화해줘 = 목록으로 만들다 = aggregate); 형/율/률/성 + 하 is an
+            # accidental compound (일체형하우징/정리형하중), so restrict the verbalizer
+            # exception to the 화 suffix — every other bare nominal stays guarded.
+            if resolved[after] == "화":
+                nxt = resolved[after + 1] if after + 1 < len(resolved) else ""
+                if nxt in _VERBALIZER:
+                    return True
+            idx = resolved.find(sig, idx + 1)
+    return False
 
 
 def select_supporting_evidence(
