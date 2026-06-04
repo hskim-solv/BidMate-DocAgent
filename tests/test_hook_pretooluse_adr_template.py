@@ -132,6 +132,16 @@ class TestPreToolUseAdrTemplate(unittest.TestCase):
         )
         self.assertEqual(r.returncode, 0)
 
+    def test_malformed_json_payload_is_noop(self) -> None:
+        """Invalid hook stdin fails open without operator-facing noise."""
+        r = subprocess.run(
+            ["bash", str(self._hook)],
+            input="{not-json", text=True, capture_output=True, check=False,
+            cwd=str(self._tmp_repo),
+        )
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stderr, "")
+
     # ------------------------------------------------------------------
     # Block cases
     # ------------------------------------------------------------------
