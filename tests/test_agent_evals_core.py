@@ -271,3 +271,15 @@ def test_scanner_rejects_scalar_metric_entry() -> None:
     violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
 
     assert any("must be a mapping" in violation.reason for violation in violations)
+
+
+def test_scanner_rejects_non_mapping_dynamic_section() -> None:
+    # P1 (cross-family review): a dynamic section (metrics) that is a list/scalar
+    # would let raw items fall through unchecked, so the section itself must be a
+    # mapping of name -> row before any entry is accepted.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_dyn_section_test")
+
+    text = '{"schema_version": 1, "metrics": ["short raw reviewer body"]}'
+    violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
+
+    assert any("dynamic section must be a mapping" in violation.reason for violation in violations)

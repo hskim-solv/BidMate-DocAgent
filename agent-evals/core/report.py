@@ -301,6 +301,11 @@ def _scan_artifact_keys(
                     violations.append(ScanViolation(rel_path, f"{parent_key} entry must be a mapping: {child_trail}"))
             elif key_s not in top_allowed and key_s not in _ALLOWED_NESTED_KEYS:
                 violations.append(ScanViolation(rel_path, f"unknown {kind} key not in schema: {child_trail}"))
+            if key_s in _DYNAMIC_NAME_PARENTS and not isinstance(child, Mapping):
+                # A dynamic section (e.g. metrics) must be a mapping of name -> row;
+                # a list/scalar section would let raw items fall through unchecked.
+                violations.append(ScanViolation(rel_path, f"dynamic section must be a mapping: {child_trail}"))
+                continue
             violations.extend(
                 _scan_artifact_keys(rel_path, child, top_allowed, kind, trail=child_trail, parent_key=key_s)
             )
