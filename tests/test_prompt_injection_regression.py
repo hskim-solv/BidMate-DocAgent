@@ -28,6 +28,7 @@ CHAT_TOKEN_CANARIES = [
     "<|system|>",
     "<|user|>",
     "<|assistant|>",
+    "<|tool|>",
     "<|endoftext|>",
 ]
 
