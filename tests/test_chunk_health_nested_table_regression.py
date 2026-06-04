@@ -143,6 +143,18 @@ class TestComputeChunkHealthNestedTable(unittest.TestCase):
         # Only ``doc-x`` is a real doc_id; the empty-string chunk is excluded.
         self.assertEqual(result["nested_table_loss_files"], 1)
 
+    def test_hwp_native_table_excluded_from_mid_sentence_cut_ratio(self):
+        # Native table cells are row fragments, not prose sentences. A table
+        # chunk with no sentence terminator must not inflate the mid-cut ratio.
+        chunk = _hwp_chunk(
+            "업무명\n처리부서\n담당자",
+            section="표 1 (HWP native)",
+        )
+        result = compute_chunk_health([chunk])
+        self.assertEqual(result["hwp_table_chunks"], 1)
+        self.assertEqual(result["hwp_table_chunk_ratio"], 1.0)
+        self.assertEqual(result["mid_sentence_cut_ratio"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
