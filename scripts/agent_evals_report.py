@@ -102,8 +102,16 @@ def _per_task_playbook(logs: list[dict[str, Any]]) -> dict[tuple[str, str], list
     return grouped
 
 
-def _metric_value(metric: str, runs: list[dict[str, Any]]) -> float:
-    """Compute one (task, playbook) metric value from its seed runs (safe denom)."""
+def _metric_value(metric: str, runs: list[dict[str, Any]]) -> float | None:
+    """Compute one (task, playbook) metric value from its seed runs.
+
+    Returns ``None`` when the metric is UNDEFINED for this group — specifically the
+    per-accepted cost / human-minute metrics when nothing was accepted. Returning
+    ``0.0`` there would make a zero-solve playbook look *cheapest* (best), inverting
+    the cost metric: a baseline that solves nothing would tie or beat a candidate
+    that solves at nonzero cost. An undefined value is dropped from the paired
+    sample (see ``_paired_rows``) rather than scored as free.
+    """
 
     n_runs = len(runs)
     accepted_runs = [r for r in runs if _is_accepted(r)]
@@ -115,11 +123,11 @@ def _metric_value(metric: str, runs: list[dict[str, Any]]) -> float:
         return ((n_accepted / n_runs) * weight) if n_runs else 0.0
     if metric == "human_min_per_accepted":
         if n_accepted == 0:
-            return 0.0  # safe denom: never divide by zero accepted
+            return None  # undefined: no accepted run to amortize human-minutes over
         return sum(float(r.get("human_minutes", 0.0)) for r in accepted_runs) / n_accepted
     if metric == "cost_per_accepted":
         if n_accepted == 0:
-            return 0.0  # safe denom: never divide by zero accepted
+            return None  # undefined: no accepted run to amortize cost over
         return sum(float(r.get("cost", {}).get("usd", 0.0)) for r in accepted_runs) / n_accepted
     raise ValueError(f"unknown metric: {metric}")
 
@@ -131,12 +139,14 @@ def _paired_rows(metric: str, grouped, task_ids: list[str]) -> list[dict[str, fl
         cand_runs = grouped.get((task_id, CANDIDATE_PLAYBOOK))
         if not base_runs or not cand_runs:
             continue  # a task missing either playbook cannot form a paired row
-        rows.append(
-            {
-                "v0": _metric_value(metric, base_runs),
-                "v1": _metric_value(metric, cand_runs),
-            }
-        )
+        v0 = _metric_value(metric, base_runs)
+        v1 = _metric_value(metric, cand_runs)
+        if v0 is None or v1 is None:
+            # Metric undefined for one side (e.g. zero-accepted cost_per_accepted):
+            # a paired delta is only meaningful when both sides are defined, so drop
+            # this task from THIS metric's sample rather than scoring it as 0.0.
+            continue
+        rows.append({"v0": v0, "v1": v1})
     return rows
 
 
@@ -151,11 +161,27 @@ def build_report(
     metrics_mod = load_module("agent-evals/core/metrics.py", "agent_evals_metrics_report")
     paired_bootstrap_ci, ci_provenance = _load_paired_bootstrap_ci()
 
+    # Fail loud on a dirty runs directory: the gitignored runs dir is read whole
+    # (every *.json), and the run script overwrites only the current matrix's
+    # filenames — it never clears older files. If logs from a DIFFERENT start_commit
+    # are still present, folding them into one aggregate would silently corrupt
+    # task_count / means / deltas (comparing measurements taken at different code
+    # states). Refuse rather than corrupt; the operator should report from a fresh
+    # --runs-dir per matrix. (Same-commit stale tasks remain valid measurements at
+    # that commit and are not blocked here.)
+    start_commits = sorted({log["start_commit"] for log in logs if log.get("start_commit")})
+    if len(start_commits) > 1:
+        raise ValueError(
+            "run-logs span multiple start_commit values "
+            f"({start_commits}); stale logs would corrupt the aggregate. "
+            "Use a fresh --runs-dir for a clean matrix, or remove stale logs."
+        )
+
     grouped = _per_task_playbook(logs)
     task_ids = sorted({task_id for (task_id, _playbook) in grouped})
 
     metrics_block: dict[str, Any] = {}
-    n_for_notes = 0
+    n_by_metric: dict[str, int] = {}
     for metric in CORE_METRICS:
         rows = _paired_rows(metric, grouped, task_ids)
         if not rows:
@@ -169,7 +195,7 @@ def build_report(
             candidate_name=CANDIDATE_PLAYBOOK,
         )
         row_mapping = delta.to_mapping()
-        n_for_notes = delta.n
+        n_by_metric[metric] = delta.n
         if metrics_mod.underpowered(delta.n):
             row_mapping["underpowered"] = True
         else:
@@ -193,6 +219,11 @@ def build_report(
                 row_mapping["underpowered"] = True
         metrics_block[metric] = row_mapping
 
+    # Headline N reflects the PRIMARY metric (accepted_solve_rate). The per-accepted
+    # cost / human-minute metrics can have a SMALLER n after dropping zero-accepted
+    # tasks (P3), so they must not set the headline sample size; each metric row
+    # still carries its own ``n``.
+    n_for_notes = n_by_metric.get("accepted_solve_rate", 0)
     notes = [
         f"UNDERPOWERED N={n_for_notes}" if metrics_mod.underpowered(n_for_notes) else f"N={n_for_notes}",
         "stub candidate + stub reviewer; no external egress",

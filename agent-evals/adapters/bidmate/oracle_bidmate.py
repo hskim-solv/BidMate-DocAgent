@@ -232,12 +232,29 @@ def evaluate(
             regression_pass=gates.regression_pass,
             hard_gates=hard,
         )
-    reviewer = cross_family_review(
-        payload_provider,
-        public_attestation=public_attestation,
-        candidate_family=candidate_family,
-        reviewer_family=reviewer_family,
-        reviewer_call=reviewer_call,
+    # Privacy-preserving egress order: only hand the issue+patch payload to the
+    # external cross-family reviewer when the objective gates ALREADY pass. If a
+    # hard gate fired (e.g. added_secrets / destructive) or a necessary gate
+    # failed, rejection is fully determined by the gates, so the payload — which
+    # may contain exactly the secret/destructive content the hard gate detected —
+    # must NOT leave the boundary (ADR 0005). Skipping the call here means no
+    # payload is built or sent; decide_verdict then rejects on the gates alone.
+    gates_pass = (
+        not gates.hard_gates
+        and gates.hidden_test_gate is True
+        and gates.pytest_pass is True
+        and gates.regression_pass is True
+    )
+    reviewer = (
+        cross_family_review(
+            payload_provider,
+            public_attestation=public_attestation,
+            candidate_family=candidate_family,
+            reviewer_family=reviewer_family,
+            reviewer_call=reviewer_call,
+        )
+        if gates_pass
+        else None
     )
     tier = oracle.decide_verdict(
         gates,
@@ -249,6 +266,9 @@ def evaluate(
         "tier": tier.name,
         "candidate_family": candidate_family,
         "reviewer_family": reviewer.reviewer_family if reviewer is not None else None,
-        "egress": "performed" if public_attestation else "skipped",
+        # Egress reflects whether the payload ACTUALLY left the boundary: a reviewer
+        # object exists only when cross_family_review ran (gates passed AND public
+        # attestation open). Gate failure or closed attestation => no egress.
+        "egress": "performed" if reviewer is not None else "skipped",
         "reason_code": reviewer.reason_code if reviewer is not None else None,
     }

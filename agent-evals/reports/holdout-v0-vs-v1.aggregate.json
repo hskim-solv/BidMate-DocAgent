@@ -22,8 +22,8 @@
       "delta": 0.0,
       "losses": 0,
       "metric": "cost_per_accepted",
-      "n": 3,
-      "ties": 3,
+      "n": 1,
+      "ties": 1,
       "underpowered": true,
       "wins": 0
     },
@@ -48,8 +48,8 @@
       "delta": 0.0,
       "losses": 0,
       "metric": "human_min_per_accepted",
-      "n": 3,
-      "ties": 3,
+      "n": 1,
+      "ties": 1,
       "underpowered": true,
       "wins": 0
     }

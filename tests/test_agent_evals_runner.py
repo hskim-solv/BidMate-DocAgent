@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -447,6 +449,75 @@ def test_evaluate_returns_sanitized_verdict_dict_only() -> None:
     assert set(out) == {"tier", "candidate_family", "reviewer_family", "egress", "reason_code"}
 
 
+def test_evaluate_skips_egress_when_hard_gate_fires() -> None:
+    # PR-bot P1: a hard gate (e.g. added_secrets) makes rejection certain, so the
+    # issue+patch payload — which may contain exactly the detected secret — must NOT
+    # be handed to the external reviewer. evaluate must short-circuit egress entirely.
+    ob = _oracle_bidmate()
+
+    class _Proc:
+        returncode = 0
+
+    def fake_run(_cmd, **_kwargs):
+        return _Proc()
+
+    def exploding_provider():
+        raise AssertionError("payload_provider must NOT be invoked once a gate has failed")
+
+    out = ob.evaluate(
+        Path("/tmp/x"),
+        task={"task_id": "T-sec"},
+        candidate_family="cand",
+        public_attestation=True,
+        reviewer_family="other",
+        payload_provider=exploding_provider,
+        hidden_test_cmd=["h"],
+        pytest_cmd=["p"],
+        regression_cmd=["r"],
+        diff_summary={"added_secrets": True},
+        runner_subprocess=fake_run,
+        reviewer_call=lambda _p: (True, "ok"),
+    )
+    assert out["tier"] == "REJECTED_HARD_GATE"
+    assert out["egress"] == "skipped"
+    assert out["reviewer_family"] is None
+    assert out["reason_code"] is None
+
+
+def test_evaluate_skips_egress_when_necessary_gate_fails() -> None:
+    # PR-bot P1: same short-circuit when a NECESSARY gate fails (no hard gate). A
+    # candidate that already failed must not have its payload leave the boundary.
+    ob = _oracle_bidmate()
+
+    class _Proc:
+        def __init__(self, rc):
+            self.returncode = rc
+
+    rc_by_first = {"h": 0, "p": 1, "r": 0}  # pytest fails
+
+    def fake_run(cmd, **_kwargs):
+        return _Proc(rc_by_first[cmd[0]])
+
+    def exploding_provider():
+        raise AssertionError("payload_provider must NOT be invoked when a gate failed")
+
+    out = ob.evaluate(
+        Path("/tmp/x"),
+        task={"task_id": "T-fail"},
+        candidate_family="cand",
+        public_attestation=True,
+        reviewer_family="other",
+        payload_provider=exploding_provider,
+        hidden_test_cmd=["h"],
+        pytest_cmd=["p"],
+        regression_cmd=["r"],
+        runner_subprocess=fake_run,
+        reviewer_call=lambda _p: (True, "ok"),
+    )
+    assert out["tier"] == "REJECTED_NECESSARY_GATE"
+    assert out["egress"] == "skipped"
+
+
 # --------------------------------------------------------------------------- #
 # runner.run_one — real detached worktree at HEAD + cleanup                    #
 # --------------------------------------------------------------------------- #
@@ -657,3 +728,51 @@ def test_report_powered_path_attaches_sign_aligned_ci_band() -> None:
     assert [v.render() for v in violations] == []
     assert any(note.startswith("N=12") for note in report["notes"])
     assert not any("UNDERPOWERED" in note for note in report["notes"])
+
+
+def _cost_log(task: str, playbook: str, accepted: bool, usd: float, commit: str = "c0") -> dict:
+    return {
+        "task_id": task,
+        "playbook": playbook,
+        "seed": 17,
+        "start_commit": commit,
+        "gate_results": {"tier": "ACCEPTED" if accepted else "NECESSARY_GATE_ONLY"},
+        "human_minutes": 1.0,
+        "cost": {"usd": usd},
+    }
+
+
+def test_report_zero_solve_cost_is_not_scored_as_free() -> None:
+    # PR-bot P3: a playbook that accepts NOTHING must not score 0.0 cost (which would
+    # look cheapest/best and let a zero-solve baseline win the cost metric). The
+    # undefined (task, playbook) is dropped from the cost/human-min paired sample.
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_p3_test")
+    logs = [
+        # task A: both accept -> cost defined on both sides -> one valid cost pair
+        _cost_log("T-a", "v0_naive", True, 5.0),
+        _cost_log("T-a", "v1_spec_first", True, 3.0),
+        # task B: baseline accepts nothing (cost UNDEFINED), candidate accepts at cost
+        _cost_log("T-b", "v0_naive", False, 0.0),
+        _cost_log("T-b", "v1_spec_first", True, 4.0),
+    ]
+    report = report_script.build_report(logs, report_id="p3", num_resamples=50, alpha=0.05, seed=17)
+
+    # Only task A forms a valid cost pair; task B's zero-solve baseline is dropped
+    # (NOT folded in as a free 0.0 that would beat the candidate's nonzero cost).
+    assert report["metrics"]["cost_per_accepted"]["n"] == 1
+    assert report["metrics"]["human_min_per_accepted"]["n"] == 1
+    # accepted_solve_rate is always defined, so it still covers BOTH tasks.
+    assert report["metrics"]["accepted_solve_rate"]["n"] == 2
+
+
+def test_report_refuses_mixed_start_commits() -> None:
+    # PR-bot P2: run-logs from different start_commit values in one (gitignored) runs
+    # dir would silently fold stale measurements into one aggregate and corrupt
+    # task_count / means / deltas. build_report must refuse loudly, not corrupt.
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_p2_test")
+    logs = [
+        _cost_log("T", "v0_naive", True, 1.0, commit="aaaa"),
+        _cost_log("T", "v1_spec_first", True, 1.0, commit="bbbb"),
+    ]
+    with pytest.raises(ValueError, match="multiple start_commit"):
+        report_script.build_report(logs, report_id="p2", num_resamples=50, alpha=0.05, seed=17)
