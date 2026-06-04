@@ -61,6 +61,29 @@ class TestProcessWarmDocstringPinning(unittest.TestCase):
                 f"Last 30 lines before assignment:\n{last_n_lines}",
             )
 
+    def test_process_warm_comment_stays_adjacent_to_assignment(self) -> None:
+        """The caveat must stay attached to the state flag it documents."""
+        lines = inspect.getsource(rag_core).splitlines()
+        assignment_index = next(
+            (
+                i
+                for i, line in enumerate(lines)
+                if line.strip() == "_PROCESS_WARM = False"
+            ),
+            None,
+        )
+        self.assertIsNotNone(assignment_index, "_PROCESS_WARM assignment not found")
+        previous_nonblank = next(
+            line.strip()
+            for line in reversed(lines[:assignment_index])
+            if line.strip()
+        )
+        self.assertTrue(
+            previous_nonblank.startswith("# See issue #842"),
+            "_PROCESS_WARM caveat comment must remain adjacent to the assignment; "
+            f"last nonblank line before assignment was: {previous_nonblank!r}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
