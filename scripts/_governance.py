@@ -64,6 +64,14 @@ THRESHOLDS: dict[str, int] = {
     # ADR 0047 proposed-status lifecycle SLA, in days. proposed_adr_age()
     # flags proposed ADRs first committed on/after 2026-05-15 that exceed it.
     "ADR_PROPOSED_SLA_DAYS": 30,
+    # ADR 0101 Supervised Coordinated Fleet reservation thresholds (minutes).
+    # FLEET_STALE_MINUTES: soft — fleet-status flags a window whose heartbeat is
+    #   older than this (operator ⚠). FLEET_TTL_MINUTES: hard — a reservation past
+    #   this is reclaimed (pruned) and never blocks a new claim. Single SoT so
+    #   scripts/fleet_coordination.py and any future hook never drift. TTL matches
+    #   the active-loop lease_ttl_minutes=30 default.
+    "FLEET_STALE_MINUTES": 15,
+    "FLEET_TTL_MINUTES": 30,
 }
 
 
