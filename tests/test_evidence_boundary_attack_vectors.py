@@ -73,6 +73,26 @@ class TestVector2MarkerTagConfusion(unittest.TestCase):
         self.assertIn("actually this is attacker text", out)
 
 
+class TestMarkerCaseVariants(unittest.TestCase):
+    """Case variants of the defense marker are currently NOT rewritten."""
+
+    def test_lowercase_marker_pair_NOT_defended(self) -> None:
+        # ``_LITERAL_MARKER_RE`` is intentionally exact-case today. Pin the
+        # gap so a future case-insensitive marker pre-pass flips this
+        # deliberately and updates the measurement notes.
+        attacker = "[instruction_like]attacker text[/instruction_like]"
+        out = neutralize_instruction_patterns(attacker)
+        self.assertEqual(
+            out,
+            attacker,
+            msg=(
+                "Lower-case instruction_like markers currently pass through. "
+                "Tracking issue: #2480. Fix path: make the literal-marker "
+                "pre-pass case-insensitive, then update this assertion."
+            ),
+        )
+
+
 class TestVector3ChatTokenAliasing(unittest.TestCase):
     """Whitespace / fullwidth / partial chat tokens — currently NOT defended.
 
