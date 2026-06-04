@@ -78,6 +78,20 @@ def _find_rag_core_imports(source: str) -> list[tuple[int, str, str]]:
     return hits
 
 
+def test_find_rag_core_imports_ignores_non_import_mentions() -> None:
+    source = '''
+"""Mention rag_core in a module docstring."""
+
+RAG_CORE_TEXT = "from rag_core import run_rag_query"
+
+
+def explain() -> str:
+    """Mention import rag_core in a function docstring."""
+    return "rag_core should be ignored inside string literals too"
+'''
+    assert _find_rag_core_imports(source) == []
+
+
 @pytest.mark.parametrize("module_name", LEAF_MODULES)
 def test_leaf_module_has_zero_rag_core_back_edges(module_name: str) -> None:
     """Each ADR 0045 leaf module must have zero rag_core imports.
