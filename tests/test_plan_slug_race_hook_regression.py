@@ -68,6 +68,20 @@ class TestPlanSlugRaceHook(_BaseHookCase):
         result = self._run({"tool_name": "Edit", "tool_input": {"file_path": "x"}})
         self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_malformed_json_is_allowed(self) -> None:
+        env = os.environ.copy()
+        env["HOME"] = str(self._home)
+        result = subprocess.run(
+            ["bash", str(HOOK)],
+            input="{not-json",
+            text=True,
+            capture_output=True,
+            env=env,
+            cwd=str(self._wt_root),
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_write_outside_plans_dir_is_allowed(self) -> None:
         target = Path(self._tmp) / "outside.md"
         result = self._run({"tool_name": "Write", "tool_input": {"file_path": str(target)}})
