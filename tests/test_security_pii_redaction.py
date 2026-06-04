@@ -42,6 +42,7 @@ class RedactEmailTest(unittest.TestCase):
     CASES = (
         ("이메일 foo@bar.com 으로 문의", "이메일 <email> 으로 문의"),
         ("user.name+tag@example.co.kr", "<email>"),
+        ("담당자 ops-team@bid-mate.co.kr", "담당자 <email>"),
         ("multi: a@b.com, c@d.org", "multi: <email>, <email>"),
         # Non-matches.
         ("@not-an-email", "@not-an-email"),
