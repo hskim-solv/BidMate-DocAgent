@@ -85,10 +85,39 @@ def _load_paired_bootstrap_ci() -> tuple[Callable[..., Any], str]:
 
 
 def _read_run_logs(runs_dir: Path) -> list[dict[str, Any]]:
-    logs: list[dict[str, Any]] = []
-    for path in sorted(runs_dir.glob("*.json")):
-        logs.append(json.loads(path.read_text(encoding="utf-8")))
-    return logs
+    """Read the CURRENT run's logs from ``runs_dir``.
+
+    When ``agent_evals_run.py`` wrote a ``run_manifest.json``, read ONLY the files
+    it lists: a later run with a smaller task list or different seeds overwrites the
+    manifest, so the now-orphaned logs from the earlier matrix (same ``start_commit``,
+    which ``build_report``'s guard cannot catch) are skipped instead of silently
+    inflating the aggregate. Without a manifest (legacy / hand-populated dir) fall
+    back to globbing every ``*.json`` — excluding the manifest file itself — and rely
+    on the cross-commit guard in ``build_report`` as the remaining safety net.
+    """
+
+    runner = load_module(
+        "agent-evals/adapters/bidmate/runner.py", "agent_evals_runner_for_report"
+    )
+    manifest = runner.read_run_manifest(runs_dir)
+    if manifest is not None:
+        names = manifest.get("run_logs") or []
+        missing = [name for name in names if not (runs_dir / name).exists()]
+        if missing:
+            preview = missing[:3]
+            raise FileNotFoundError(
+                f"run_manifest.json lists {len(missing)} run-log(s) not on disk "
+                f"({preview}{'...' if len(missing) > 3 else ''}); the runs dir is "
+                "inconsistent — re-run scripts/agent_evals_run.py."
+            )
+        return [
+            json.loads((runs_dir / name).read_text(encoding="utf-8")) for name in names
+        ]
+    return [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(runs_dir.glob("*.json"))
+        if path.name != runner.RUN_MANIFEST_NAME
+    ]
 
 
 def _is_accepted(run_log: dict[str, Any]) -> bool:

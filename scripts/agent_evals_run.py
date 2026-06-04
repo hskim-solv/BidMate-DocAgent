@@ -144,6 +144,15 @@ def run(
             run_log, oracle, public_attestation=public_attestation
         )
         written.append(runner.write_run_log(run_log, runs_dir=runs_dir))
+    # Record exactly which logs this matrix produced so the report scopes to THIS
+    # run and never folds in orphaned logs from an earlier, differently-shaped
+    # matrix (smaller task list / changed seeds at the same start_commit).
+    runner.write_run_manifest(
+        written,
+        runs_dir=runs_dir,
+        start_commit=start_commit,
+        tasks=tasks,
+    )
     return written
 
 

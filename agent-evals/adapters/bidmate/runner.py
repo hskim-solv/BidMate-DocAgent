@@ -34,6 +34,12 @@ DEFAULT_PLAYBOOKS: tuple[str, ...] = ("v0_naive", "v1_spec_first")
 DEFAULT_SEEDS: tuple[int, ...] = (17, 18, 19)
 _WORKTREE_OP_TIMEOUT = 300
 
+# Name of the per-run manifest written alongside the run-logs in the GITIGNORED
+# runs dir. The report reads ONLY the files this manifest lists, so a later run
+# with a smaller task list or different seeds (same start_commit) cannot fold
+# stale logs from an earlier, differently-shaped matrix into the aggregate.
+RUN_MANIFEST_NAME = "run_manifest.json"
+
 
 def _zero_clock() -> float:
     """Deterministic default clock (tests override; never wall-clock at import)."""
@@ -175,6 +181,56 @@ def write_run_log(run_log: dict[str, Any], *, runs_dir: Path) -> Path:
     out_path = runs_dir / name
     out_path.write_text(json.dumps(run_log, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return out_path
+
+
+def write_run_manifest(
+    run_log_paths: Sequence[Path],
+    *,
+    runs_dir: Path,
+    start_commit: str,
+    tasks: Sequence[str],
+    playbooks: Sequence[str] = DEFAULT_PLAYBOOKS,
+    seeds: Sequence[int] = DEFAULT_SEEDS,
+) -> Path:
+    """Record EXACTLY which run-log files belong to the matrix just executed.
+
+    The report consumes only the basenames listed in ``run_logs`` (see
+    ``read_run_manifest``).  Because every run overwrites this single manifest, a
+    later run with a smaller task list or different seeds — which leaves the earlier
+    run's now-orphaned ``*.json`` files on disk under the same ``start_commit`` —
+    cannot silently inflate ``task_count`` / means / deltas: those orphans are no
+    longer listed, so the report skips them.  Lives in the GITIGNORED runs dir and
+    is never committed.  The extra ``start_commit``/``tasks``/``playbooks``/``seeds``
+    fields are provenance only; ``run_logs`` is authoritative.
+    """
+
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "run_logs": sorted(p.name for p in run_log_paths),
+        "start_commit": start_commit,
+        "tasks": list(tasks),
+        "playbooks": list(playbooks),
+        "seeds": [int(s) for s in seeds],
+    }
+    out_path = runs_dir / RUN_MANIFEST_NAME
+    out_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return out_path
+
+
+def read_run_manifest(runs_dir: Path) -> "dict[str, Any] | None":
+    """Return the run manifest dict, or ``None`` when the dir has no manifest.
+
+    ``None`` signals a legacy / hand-populated runs dir; the caller then falls back
+    to globbing (with the cross-commit guard as the safety net).
+    """
+
+    path = runs_dir / RUN_MANIFEST_NAME
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def run_matrix(

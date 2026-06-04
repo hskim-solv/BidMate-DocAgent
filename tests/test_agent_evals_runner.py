@@ -776,3 +776,78 @@ def test_report_refuses_mixed_start_commits() -> None:
     ]
     with pytest.raises(ValueError, match="multiple start_commit"):
         report_script.build_report(logs, report_id="p2", num_resamples=50, alpha=0.05, seed=17)
+
+
+def _write_log(runner, runs_dir: Path, task: str, playbook: str, seed: int) -> Path:
+    """Persist a minimal run-log via the runner's own writer (real filename scheme)."""
+
+    return runner.write_run_log(
+        {
+            "task_id": task,
+            "playbook": playbook,
+            "seed": seed,
+            "start_commit": "c0",
+            "gate_results": {"tier": "ACCEPTED"},
+            "human_minutes": 1.0,
+            "cost": {"usd": 0.0},
+        },
+        runs_dir=runs_dir,
+    )
+
+
+def test_report_manifest_scopes_to_current_run_only(tmp_path) -> None:
+    # PR-bot P2 (completion): the report must read EXACTLY the current matrix. A later
+    # run with a smaller task list / changed seeds (same start_commit) leaves orphaned
+    # logs on disk; the start_commit guard cannot catch them. The run_manifest scopes
+    # reads to the files THIS run wrote, so orphans are skipped — not folded in.
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_manifest_scope")
+    runner = load_module("agent-evals/adapters/bidmate/runner.py", "agent_evals_runner_manifest_scope")
+    runs_dir = tmp_path / "runs"
+
+    # Current run: one task, both playbooks, one seed -> 2 logs + a manifest.
+    current = [
+        _write_log(runner, runs_dir, "T-keep", "v0_naive", 17),
+        _write_log(runner, runs_dir, "T-keep", "v1_spec_first", 17),
+    ]
+    runner.write_run_manifest(current, runs_dir=runs_dir, start_commit="c0", tasks=["T-keep"])
+    # Orphan from an earlier, larger matrix at the SAME start_commit: still on disk,
+    # NOT in the manifest. A whole-dir glob would fold it into task_count.
+    _write_log(runner, runs_dir, "T-stale", "v0_naive", 17)
+    _write_log(runner, runs_dir, "T-stale", "v1_spec_first", 17)
+
+    logs = report_script._read_run_logs(runs_dir)
+    task_ids = sorted({log["task_id"] for log in logs})
+    assert task_ids == ["T-keep"]  # orphan excluded; manifest is authoritative
+    # The manifest file itself is never parsed as a run-log (no task_id KeyError).
+    assert all("task_id" in log for log in logs)
+
+
+def test_report_manifest_missing_log_fails_loud(tmp_path) -> None:
+    # If the manifest references a log that is not on disk, the runs dir is
+    # inconsistent; the report must fail loudly rather than silently under-report.
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_manifest_missing")
+    runner = load_module("agent-evals/adapters/bidmate/runner.py", "agent_evals_runner_manifest_missing")
+    runs_dir = tmp_path / "runs"
+    kept = _write_log(runner, runs_dir, "T-a", "v0_naive", 17)
+    runner.write_run_manifest(
+        [kept, runs_dir / "T-a__v1_spec_first__seed17.json"],  # second never written
+        runs_dir=runs_dir,
+        start_commit="c0",
+        tasks=["T-a"],
+    )
+    with pytest.raises(FileNotFoundError, match="not on disk"):
+        report_script._read_run_logs(runs_dir)
+
+
+def test_report_glob_fallback_when_no_manifest(tmp_path) -> None:
+    # Legacy / hand-populated dir with no manifest: fall back to globbing every
+    # *.json. (The cross-commit guard in build_report remains the safety net there.)
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_no_manifest")
+    runner = load_module("agent-evals/adapters/bidmate/runner.py", "agent_evals_runner_no_manifest")
+    runs_dir = tmp_path / "runs"
+    _write_log(runner, runs_dir, "T-x", "v0_naive", 17)
+    _write_log(runner, runs_dir, "T-x", "v1_spec_first", 17)
+    # No manifest written.
+    logs = report_script._read_run_logs(runs_dir)
+    assert sorted({log["task_id"] for log in logs}) == ["T-x"]
+    assert len(logs) == 2
