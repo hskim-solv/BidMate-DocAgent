@@ -1399,6 +1399,115 @@ def test_is_valid_result_rejects_nondict_finding_items():
     assert precommit._is_valid_result(mixed) is False
 
 
+# ----- finding-field severity validation (issue #1920) ----------------------
+# The block decision reads only max_severity, which folds an unrecognized
+# severity to non-blocking. A finding whose severity is malformed/missing would
+# silently downgrade a would-be critical past the gate, so such a pass is an
+# error (fail-closed), not a clean success.
+
+
+def test_is_recognized_severity_accepts_known_rejects_malformed():
+    for good in ("critical", "high", "medium", "low", "CRITICAL", "High"):
+        assert precommit._is_recognized_severity(good) is True
+    for bad in (None, 42, "", "critikal", "sev-1", ["high"], {"x": 1}):
+        assert precommit._is_recognized_severity(bad) is False
+
+
+def test_malformed_severity_finding_counts_as_error_pass():
+    missing = {"result": {"verdict": "needs-attention", "findings": [{"title": "x"}]},
+               "parseError": None}
+    typo = {"result": {"verdict": "needs-attention",
+                       "findings": [{"severity": "critikal", "title": "x"}]},
+            "parseError": None}
+    nonstr = {"result": {"verdict": "needs-attention",
+                        "findings": [{"severity": 42, "title": "x"}]},
+              "parseError": None}
+    good = _payload([_finding(severity="critical")])
+    assert precommit._is_valid_result(missing) is False
+    assert precommit._is_valid_result(typo) is False
+    assert precommit._is_valid_result(nonstr) is False
+    assert precommit._is_valid_result(good) is True
+    # PassResult.is_error mirrors it.
+    assert precommit.PassResult(index=0, payload=typo, stdout="", stderr="", rc=0).is_error is True
+    assert precommit.PassResult(index=0, payload=good, stdout="", stderr="", rc=0).is_error is False
+
+
+def test_malformed_severity_does_not_silently_pass_gate(tmp_path: Path, monkeypatch):
+    # End-to-end: passes that all report a CRITICAL finding with a malformed
+    # severity ("CRITICAL!!" → folds to non-blocking) must NOT slip through as a
+    # clean rc=0 — they classify as errors, so successful_passes=0 < min_frequency
+    # → fail-closed block (rc=1). Pre-#1920 this returned rc=0 (silent pass).
+    monkeypatch.setattr(precommit, "_staged_diff_snapshot", lambda **_: "diff")
+    bad = {"result": {"verdict": "needs-attention",
+                      "findings": [{"severity": "CRITICAL!!", "file": "rag_core.py",
+                                    "line_start": 1, "line_end": 2, "title": "boom"}]},
+           "parseError": None}
+
+    def runner(cmd, timeout_sec):
+        return _proc(bad)
+
+    rc = precommit.run_precommit_review(
+        attempts=2, base="HEAD", scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py"], hits=["rag_core.py"],
+        out_dir=tmp_path, timeout_sec=900, min_frequency=2, runner=runner,
+    )
+    assert rc == 1  # fail-closed, not a silent rc=0
+
+
+# ----- embedded staged-diff scope (issue #1920) -----------------------------
+# The gate fires on load-bearing paths but previously embedded the ENTIRE staged
+# diff, shipping unrelated co-staged content to Codex. Scope the snapshot to the
+# hits so the payload is bounded to what the review is about.
+
+
+def test_staged_diff_snapshot_scopes_to_load_bearing_paths(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="diff body", stderr="")
+
+    monkeypatch.setattr(precommit.subprocess, "run", fake_run)
+    precommit._staged_diff_snapshot(paths=["rag_core.py", "docs/adr/0066-x.md"])
+    assert captured["cmd"][:4] == ["git", "diff", "--cached", "--no-color"]
+    assert captured["cmd"][4:] == ["--", "rag_core.py", "docs/adr/0066-x.md"]
+
+
+def test_staged_diff_snapshot_no_paths_diffs_everything(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="d", stderr="")
+
+    monkeypatch.setattr(precommit.subprocess, "run", fake_run)
+    precommit._staged_diff_snapshot()  # paths=None → no pathspec
+    assert "--" not in captured["cmd"]
+
+
+def test_run_precommit_review_scopes_snapshot_to_hits(tmp_path: Path, monkeypatch):
+    seen: dict[str, object] = {}
+
+    def fake_snapshot(*, paths=None, max_bytes=60_000):
+        seen["paths"] = paths
+        return "diff"
+
+    monkeypatch.setattr(precommit, "_staged_diff_snapshot", fake_snapshot)
+
+    def runner(cmd, timeout_sec):
+        return _proc(_payload([], verdict="approve"))
+
+    rc = precommit.run_precommit_review(
+        attempts=2, base="HEAD", scope="branch",
+        companion=Path("/tmp/codex-companion.mjs"),
+        changed_files=["rag_core.py", "foo.txt"], hits=["rag_core.py"],
+        out_dir=tmp_path, timeout_sec=900, min_frequency=2, runner=runner,
+    )
+    assert rc == 0
+    assert seen["paths"] == ["rag_core.py"]  # scoped to load-bearing hits, not foo.txt
+
+
 # ----- staged-diff snapshot embedded in focus (issue #1693 #3) --------------
 # The companion is invoked with `--base HEAD --scope branch`, so its structured
 # REVIEW_INPUT "Branch Diff" is empty (HEAD..HEAD). Capturing the staged diff
