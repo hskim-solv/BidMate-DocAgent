@@ -24,7 +24,7 @@ class PiiRedactionEnvFlagTest(unittest.TestCase):
     def test_true_values_enable(self) -> None:
         import os
 
-        for value in ("1", "true", "TRUE", "yes", "Yes"):
+        for value in ("1", "true", "TRUE", "yes", "Yes", " true ", "\tyes\n"):
             os.environ["BIDMATE_INGEST_REDACT_PII"] = value
             try:
                 self.assertTrue(_pii_redaction_enabled(), f"expected enabled for {value!r}")
