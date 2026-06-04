@@ -57,6 +57,14 @@ class TestComputeParetoFrontier(unittest.TestCase):
             {"cheap", "good", "expensive"},
         )
 
+    def test_same_cost_higher_quality_dominates(self) -> None:
+        points = [
+            self._pt("same_cost_low", cost=5, quality=0.6),
+            self._pt("same_cost_high", cost=5, quality=0.8),
+        ]
+        frontier = compute_pareto_frontier(points)
+        self.assertEqual({p.name for p in frontier}, {"same_cost_high"})
+
     def test_ties_are_kept(self) -> None:
         # Two points with identical cost and quality should both stay —
         # neither strictly dominates the other.
