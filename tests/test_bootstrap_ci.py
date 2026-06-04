@@ -91,6 +91,10 @@ class BootstrapCITest(unittest.TestCase):
         self.assertEqual(format_ci_band(None), "N/A")
         self.assertEqual(format_ci_band({"mean": None}), "N/A")
 
+    def test_format_ci_band_renders_mean_only_when_bounds_missing(self) -> None:
+        self.assertEqual(format_ci_band({"mean": 0.906, "ci_lo": 0.781}), "0.906")
+        self.assertEqual(format_ci_band({"mean": 0.906, "ci_hi": 1.0}, digits=2), "0.91")
+
 
 class PairedBootstrapCITest(unittest.TestCase):
     def test_paired_bootstrap_ci_deterministic_seed(self) -> None:
