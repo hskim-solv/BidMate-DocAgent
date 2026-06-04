@@ -62,6 +62,15 @@ class TestCommitMsgHook:
         )
         assert code == 0
 
+    def test_passes_when_issue_branch_has_no_slug(self, tmp_path: Path) -> None:
+        """ADR 0007 allows the slug suffix to be omitted: test/issue-2416."""
+        code, _ = _run_hook(
+            branch="test/issue-2416",
+            message="test: cover optional slug branch\n\nCloses #2416\n",
+            tmp_path=tmp_path,
+        )
+        assert code == 0
+
     def test_rejects_when_commit_missing_issue_reference(self, tmp_path: Path) -> None:
         """The core guard: branch claims #99 but message has no reference."""
         code, stderr = _run_hook(
