@@ -3,7 +3,7 @@ PyYAML>=6.0.3
 rank-bm25>=0.2.2,<1.0
 # ADR 0081 — canonical zero-env naive_baseline uses embedded Chroma as its
 # vector-store backend. `memory` remains an explicit legacy/control backend.
-chromadb>=1.0,<2.0
+chromadb>=1.5.9,<2.0
 # Floor bumped 2.7 → 5.0 (issue #1357): EmbeddingGemma-300M
 # (google/embeddinggemma-300m) ships a Gemma3-based dense+normalize module
 # stack that only loads on sentence-transformers>=5.0; Qwen3-Embedding-0.6B
