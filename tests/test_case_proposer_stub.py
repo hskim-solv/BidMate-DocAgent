@@ -50,6 +50,23 @@ class CaseProposerStubTest(unittest.TestCase):
             self.assertEqual(result, calls[0])
         self.assertEqual(len(calls[0]), 4)  # 2 rows * 2 templates
 
+    def test_stub_skips_missing_doc_id_without_consuming_ids(self) -> None:
+        rows = [
+            {"발주 기관": "누락기관", "사업명": "누락사업"},
+            {"doc_id": "doc-001", "발주 기관": "A기관", "사업명": "사업A"},
+        ]
+
+        out = propose_cases(rows, backend="stub", now_iso="2026-05-13T00:00:00Z")
+
+        self.assertEqual(
+            [case["id"] for case in out],
+            ["proposed_20260513_001", "proposed_20260513_002"],
+        )
+        self.assertEqual(
+            [case["proposer_meta"]["seed_doc_id"] for case in out],
+            ["doc-001", "doc-001"],
+        )
+
     def test_resolve_backend_default_is_stub(self) -> None:
         name, fn = resolve_backend()
         self.assertEqual(name, "stub")
