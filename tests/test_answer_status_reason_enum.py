@@ -101,6 +101,16 @@ class TestAnswerStatusReasonEnum(unittest.TestCase):
         )
         self.assertIn(result["code"], KNOWN_ANSWER_STATUS_REASON_CODES)
 
+    def test_verified_flag_is_normalized_to_bool(self) -> None:
+        for raw_verified, expected in ((1, True), (0, False)):
+            with self.subTest(raw_verified=raw_verified):
+                result = answer_status_reason(
+                    status=ANSWER_STATUS_SUPPORTED,
+                    verified=raw_verified,
+                    verification_reasons=[],
+                )
+                self.assertIs(result["verified"], expected)
+
     def test_clarification_codes_pass_through_via_override(self) -> None:
         # rag_clarification uses the ``code=`` override to disambiguate
         # *why* a query was abstained from. Both clarification codes
