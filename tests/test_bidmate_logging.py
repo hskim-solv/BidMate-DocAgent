@@ -98,6 +98,12 @@ def test_level_env_var_respected(monkeypatch: pytest.MonkeyPatch) -> None:
     assert logger.getEffectiveLevel() == logging.WARNING
 
 
+def test_level_env_var_accepts_lowercase(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(bidmate_logging.ENV_LEVEL, "warning")
+    logger = bidmate_logging.get_logger("rag_core")
+    assert logger.getEffectiveLevel() == logging.WARNING
+
+
 def test_invalid_level_falls_back_to_info(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(bidmate_logging.ENV_LEVEL, "NOT_A_LEVEL")
     logger = bidmate_logging.get_logger("rag_core")
