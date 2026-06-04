@@ -42,6 +42,12 @@ def test_existing_adr_numbers_ignores_non_adr_files(tmp_path: Path) -> None:
     assert existing_adr_numbers(tmp_path) == {1, 2}
 
 
+def test_existing_adr_numbers_ignores_matching_directories(tmp_path: Path) -> None:
+    (tmp_path / "0003-directory.md").mkdir()
+    _touch(tmp_path, "0004-real-file.md")
+    assert existing_adr_numbers(tmp_path) == {4}
+
+
 def test_existing_adr_numbers_strict_filename_pattern(tmp_path: Path) -> None:
     # 4 digits exactly + kebab slug starting with [a-zA-Z0-9]. Issue #818
     # widened the character class to accept uppercase so the scanner does
