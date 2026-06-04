@@ -17,4 +17,4 @@
 # Multi-node decomposition (analyze / retrieve / build_answer as
 # separate graph nodes) is a follow-up stage; the dependency is the
 # same.
-langgraph>=1.2.2,<2.0
+langgraph>=1.2.4,<2.0
