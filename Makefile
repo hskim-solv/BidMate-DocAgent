@@ -1689,3 +1689,30 @@ self-review-quarterly:
 #   make hook-fires-weekly DAYS=30   # last 30 days
 hook-fires-weekly:
 	@$(PYTHON) scripts/claude-hooks/_self_review.py --window-days $(or $(DAYS),7) --repo .
+
+# Supervised Coordinated Fleet (ADR 0101 M1) — cross-process 파일 예약 + 단일 관측.
+# worktree-per-team 토폴로지에서 팀(=worktree=window) 간 load-bearing 파일 claim 을
+# first-writer-wins BLOCK 으로 조율한다. reservations 는 .omc/state/fleet/ (gitignore,
+# ADR 0005 경계: relative-path + 비민감 메타만). substrate 가 inert 되지 않도록 운영자
+# 진입점 3개를 노출 — spawn-track / 수동 worktree 착수 시 claim 을 선언한다.
+.PHONY: fleet-status fleet-reserve fleet-release fleet-review
+# make fleet-status            # 전 창 claim+liveness + cross-family review verdict 단일 화면 (lockless read, exit 0)
+# make fleet-status CHECK=1    # stale/overlap/store-unreadable 있으면 non-zero (CI/게이트용; review verdict 은 advisory — 표시만, 게이트 아님)
+# make fleet-status JSON=1     # 기계 판독 JSON (reservations + reviews)
+fleet-status:
+	@$(PYTHON) scripts/fleet_coordination.py status $(if $(CHECK),--check,) $(if $(JSON),--json,)
+# make fleet-reserve FILES='rag_core.py rag_retrieval.py' RUNTIME=cc|codex [ISSUE=N]
+fleet-reserve:
+	@if [ -z "$(FILES)" ]; then echo "Usage: make fleet-reserve FILES='rag_core.py ...' RUNTIME=cc|codex [ISSUE=N]"; exit 1; fi
+	@if [ -z "$(RUNTIME)" ]; then echo "Usage: make fleet-reserve FILES='...' RUNTIME=cc|codex [ISSUE=N]  (RUNTIME required — cc default 제거, Codex info 1311)"; exit 1; fi
+	@$(PYTHON) scripts/fleet_coordination.py reserve --runtime $(RUNTIME) $(if $(ISSUE),--issue $(ISSUE),) --files $(FILES)
+# make fleet-release           # 현재 window(branch) 의 예약 해제 (cleanup 와이어링)
+fleet-release:
+	@$(PYTHON) scripts/fleet_coordination.py release
+# make fleet-review BASE=origin/main [RUNTIME=cc|codex]   # 현재 window 산출을 opposite-family 가 리뷰 (M2, ADR 0101 D7)
+# candidate_family = 현재 window 의 runtime(예약 또는 RUNTIME 인자), reviewer_family = opposite (cc↔codex).
+# **FLEET_COUPLING=adversarial 필요** — 미설정(기본 reserve)/off 시 non-zero 거부. 상세 findings 는
+# .omc/ gitignore artifacts 에 남고, fleet reviews.json 엔 verdict + severity count 메타만 (ADR 0005).
+fleet-review:
+	@if [ -z "$(BASE)" ]; then echo "Usage: FLEET_COUPLING=adversarial make fleet-review BASE=<git-ref> [RUNTIME=cc|codex]"; exit 1; fi
+	@$(PYTHON) scripts/fleet_coordination.py review --base $(BASE) $(if $(RUNTIME),--runtime $(RUNTIME),)
