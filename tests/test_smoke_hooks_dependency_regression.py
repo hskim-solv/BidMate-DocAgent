@@ -33,6 +33,19 @@ class TestSmokeDependsOnInstallHooks(unittest.TestCase):
             "smoke target must depend on install-hooks so a fresh worktree "
             "activates .githooks/ before the first eval run.",
         )
+        hooks_index = r.stdout.find("git config core.hooksPath .githooks")
+        smoke_index = r.stdout.find("bash scripts/smoke.sh")
+        self.assertNotEqual(
+            smoke_index,
+            -1,
+            "`make -n smoke` must still dry-run the smoke script.",
+        )
+        self.assertLess(
+            hooks_index,
+            smoke_index,
+            "install-hooks must run before scripts/smoke.sh so the first "
+            "smoke execution in a fresh worktree is hook-instrumented.",
+        )
 
 
 if __name__ == "__main__":
