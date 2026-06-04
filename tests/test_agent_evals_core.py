@@ -172,3 +172,49 @@ def test_scanner_rejects_oversized_aggregate_json_value() -> None:
     violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
 
     assert any("oversized data string" in violation.reason for violation in violations)
+
+
+def test_scanner_key_allowlists_match_schema() -> None:
+    # The scanner mirrors schema.py's positive key sets inline so the pre-commit
+    # boundary stays import-free; this guards the duplication against drift.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_drift_test")
+    schema = load_module("agent-evals/core/schema.py", "agent_evals_schema_drift_test")
+
+    assert report._ALLOWED_TASK_KEYS == schema.ALLOWED_TASK_KEYS
+    assert report._ALLOWED_REPORT_KEYS == schema.ALLOWED_REPORT_KEYS
+
+
+def test_scanner_rejects_unknown_task_yaml_key() -> None:
+    # P1 (cross-family review): a non-forbidden raw sink under an unknown key
+    # (issue_title) must fail closed, not only the fixed forbidden-key list.
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_task_key_test")
+
+    text = (
+        "task_id: T-1\n"
+        "source: smoke_synthetic_contract\n"
+        "category: hook_privacy\n"
+        "acceptance:\n  - preserve guard\n"
+        "hidden_test_gate: unseen guard passes\n"
+        "issue_title: raw upstream issue title\n"
+    )
+    violations = report.validate_agent_eval_file("agent-evals/tasks/T-1/task.yaml", text)
+
+    assert any("unknown task key" in violation.reason for violation in violations)
+
+
+def test_scanner_rejects_unknown_aggregate_report_key() -> None:
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_report_key_test")
+
+    text = '{"schema_version": 1, "pr_title": "raw upstream pr title"}'
+    violations = report.validate_agent_eval_file("agent-evals/reports/smoke.aggregate.json", text)
+
+    assert any("unknown report key" in violation.reason for violation in violations)
+
+
+def test_scanner_rejects_unknown_splits_key() -> None:
+    report = load_module("agent-evals/core/report.py", "agent_evals_report_split_key_test")
+
+    text = "schema_version: 1\nrfp_excerpt: a short raw excerpt\n"
+    violations = report.validate_agent_eval_file("agent-evals/splits.yaml", text)
+
+    assert any("unknown split key" in violation.reason for violation in violations)

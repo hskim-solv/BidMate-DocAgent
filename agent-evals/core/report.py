@@ -106,6 +106,47 @@ _FORBIDDEN_IMPORT_PREFIXES = (
     "api.",
 )
 
+# Positive top-level key schemas for committable structured data artifacts.
+# The forbidden-key denylist above is a blocklist; these allowlists make the
+# committable artifacts fail closed on *unknown* top-level keys so a non-forbidden
+# raw sink (issue_title, pr_title, rfp_excerpt, ...) cannot ride in on a
+# force-added file. Kept inline rather than imported from schema.py so the
+# pre-commit boundary stays dependency-free; drift is guarded by a test that
+# asserts equality with schema.ALLOWED_TASK_KEYS / schema.ALLOWED_REPORT_KEYS.
+_ALLOWED_TASK_KEYS = frozenset(
+    {
+        "task_id",
+        "source",
+        "category",
+        "train_hint",
+        "acceptance",
+        "hidden_test_gate",
+        "aggregate_only_notes",
+    }
+)
+_ALLOWED_REPORT_KEYS = frozenset(
+    {
+        "schema_version",
+        "surface",
+        "report_id",
+        "generated_by",
+        "task_count",
+        "playbooks",
+        "metrics",
+        "scanner",
+        "notes",
+    }
+)
+_ALLOWED_SPLIT_KEYS = frozenset(
+    {
+        "schema_version",
+        "surface",
+        "freshness_exclusion_days",
+        "assignment",
+        "notes",
+    }
+)
+
 
 @dataclass(frozen=True)
 class ScanViolation:
@@ -185,6 +226,19 @@ def _scan_json_keys(rel_path: str, value: Any, *, trail: str = "$") -> list[Scan
     return violations
 
 
+def _check_allowed_top_level_keys(
+    rel_path: str, parsed: Any, allowed: frozenset[str], kind: str
+) -> list[ScanViolation]:
+    """Fail closed on unknown top-level keys for a committable data artifact."""
+
+    if not isinstance(parsed, Mapping):
+        return []
+    unknown = sorted(str(key) for key in parsed if str(key) not in allowed)
+    if unknown:
+        return [ScanViolation(rel_path, f"unknown {kind} key(s) not in schema: {unknown}")]
+    return []
+
+
 def _yaml_error_summary(exc: yaml.YAMLError) -> str:
     text = str(exc).strip()
     return text.splitlines()[0] if text else exc.__class__.__name__
@@ -210,6 +264,10 @@ def _scan_yaml(rel_path: str, text: str) -> list[ScanViolation]:
         violations.append(ScanViolation(rel_path, f"unparseable YAML data artifact: {_yaml_error_summary(exc)}"))
         return violations
     if parsed is not None:
+        if rel_path == "agent-evals/splits.yaml":
+            violations.extend(_check_allowed_top_level_keys(rel_path, parsed, _ALLOWED_SPLIT_KEYS, "split"))
+        elif rel_path.endswith("/task.yaml"):
+            violations.extend(_check_allowed_top_level_keys(rel_path, parsed, _ALLOWED_TASK_KEYS, "task"))
         violations.extend(_scan_json_keys(rel_path, parsed))
     return violations
 
@@ -240,6 +298,7 @@ def validate_agent_eval_file(rel_path: str, text: str) -> list[ScanViolation]:
         else:
             if not isinstance(parsed, dict):
                 violations.append(ScanViolation(rel_path, "aggregate report must be a JSON object"))
+            violations.extend(_check_allowed_top_level_keys(rel_path, parsed, _ALLOWED_REPORT_KEYS, "report"))
             violations.extend(_scan_json_keys(rel_path, parsed))
         return violations
 
