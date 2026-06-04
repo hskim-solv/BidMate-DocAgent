@@ -1,0 +1,10 @@
+task_id: T-smoke-002
+source: smoke_synthetic_contract
+category: eval_guard
+train_hint: prefer paired directional measurement over absolute scoring
+acceptance:
+  - compute same-task candidate minus baseline delta
+  - reject empty paired input
+hidden_test_gate: unseen tie and regression cases preserve win loss tie counts
+aggregate_only_notes:
+  - no raw issue, PR, patch, filename, path, query, answer, or evidence text

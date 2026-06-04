@@ -23,9 +23,9 @@ BLOCKED_PATTERNS=(
   '^eval/.*\.local\.yaml$'
   '^reports/real[^/]*/'
   # ADR 0100 operator-skill eval surface: deny-by-default. Every agent-evals/ path is
-  # blocked here (local force-add guard) and only README is allowlisted below — code, mined
-  # task.yaml, playbooks, splits, and reports all wait for the PR2 content scanner. Mirrors
-  # the .gitignore agent-evals/ boundary.
+  # blocked here (local force-add guard), and only the PR2 scanner-backed exact surface is
+  # allowlisted below. The content scanner runs before this path boundary so any force-added
+  # raw/private data sink is rejected even if the path shape is committable.
   '^agent-evals/'
 )
 
@@ -114,9 +114,16 @@ ALLOWED_PATTERNS=(
   '^reports/real100_v2/judge\.aggregate\.json$'
   '^reports/real100_v2/judge_ragas\.aggregate\.json$'
   '^reports/real100_v2/rationality\.aggregate\.json$'
-  # ADR 0100 operator-skill eval surface (PR1): README is the ONLY committable agent-evals/
-  # file. PR2 adds code + aggregate-report allowlist rules together with the content scanner.
+  # ADR 0100 operator-skill eval surface (PR2): scanner-backed committable surface.
   '^agent-evals/README\.md$'
+  '^agent-evals/core/__init__\.py$'
+  '^agent-evals/core/(schema|metrics|report)\.py$'
+  '^agent-evals/adapters/bidmate/__init__\.py$'
+  '^agent-evals/adapters/bidmate/task_mining\.py$'
+  '^agent-evals/playbooks/v(0_naive|1_spec_first)\.md$'
+  '^agent-evals/splits\.yaml$'
+  '^agent-evals/tasks/[^/]+/task\.yaml$'
+  '^agent-evals/reports/[^/]+\.aggregate\.json$'
 )
 
 # Guard: ADR file deletion/rename (CLAUDE.md Prohibited).
@@ -350,7 +357,7 @@ fi
 
 # NUL-delimited read (-z) so a staged path containing a newline or other control
 # character cannot split into multiple tokens and slip past the agent-evals/
-# README-only boundary (Codex pre-commit review, issue #1844). -z is robust
+# exact PR2 allowlist boundary (Codex pre-commit review, issue #1844). -z is robust
 # regardless of core.quotePath, unlike newline-delimited --name-only. read -r -d ''
 # stays bash-3.2 compatible (avoids mapfile -d, which needs bash 4+).
 staged_files=()
@@ -360,6 +367,22 @@ done < <(git diff --cached -z --name-only --diff-filter=ACMR 2>/dev/null || true
 
 if [[ ${#staged_files[@]} -eq 0 ]]; then
   exit 0
+fi
+
+agent_evals_staged=0
+for file in "${staged_files[@]}"; do
+  if [[ "$file" == agent-evals/* ]]; then
+    agent_evals_staged=1
+    break
+  fi
+done
+
+if [[ "$agent_evals_staged" -eq 1 ]]; then
+  agent_evals_scan_out=$(python3 agent-evals/core/report.py --check-staged 2>&1)
+  if [[ $? -ne 0 ]]; then
+    echo "$agent_evals_scan_out" >&2
+    exit 1
+  fi
 fi
 
 violations=()

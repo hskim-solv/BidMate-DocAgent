@@ -2,23 +2,22 @@
 
 The operator-skill eval surface (`agent-evals/`) runs paired playbook trials whose
 per-run artifacts — run-logs, captured PR diffs, reviewer inputs — carry raw issue/PR
-text that ADR 0005 forbids committing. PR1 enforces the **path layer** of the boundary
+text that ADR 0005 forbids committing. PR1 established the path layer and PR2 extends it with content scanning
 with three complementary checks:
 
 1. ``.gitignore`` is **deny-by-default**: everything under ``agent-evals/`` is ignored, then
-   ONLY ``README.md`` is unignored (``test_*`` below). Code (core/, adapters/), task.yaml
-   (mined from merge PRs), playbooks, splits.yaml, and reports are all free-form text that
-   can carry raw issue/PR/RFP content, so they stay denied until PR2 lands the content-level
-   aggregate-only scanner + per-file privacy validation — an exact-match README-only allowlist
-   means no generalizable pattern a raw artifact could match.
+   PR2 unignores only the exact scanner-backed code/task/playbook/split/aggregate-report
+   surface. Raw run logs, captured patches, reviewer inputs, worktrees, unexpected names, and
+   non-aggregate reports remain denied.
 2. An **index-aware guard** (``test_no_tracked_file_outside_committable_allowlist``):
    ``.gitignore`` is only advisory (``git add -f`` and already-tracked files bypass it),
    so the authoritative enforcement is that NO *tracked* file under ``agent-evals/`` falls
    outside the exact committable allowlist.
 3. A **local pre-commit mirror** (``test_precommit_hook_enforces_agent_evals_boundary``):
-   ``.githooks/pre-commit`` must carry the same deny-all-but-README rule so a force-added raw
-   artifact is rejected at commit time locally, not only in CI (mirrors the hook's existing
-   ADR 0005 path-block convention).
+   ``.githooks/pre-commit`` must carry the same deny-by-default rule and invoke
+   ``agent-evals/core/report.py --check-staged`` so a force-added raw artifact is rejected at
+   commit time locally, not only in CI (mirrors the hook's existing ADR 0005 path-block
+   convention).
 
 ``git check-ignore --no-index --quiet <path>`` exits 0 when a path is ignored by pattern,
 1 when not — ``--no-index`` evaluates the patterns regardless of tracking state, so the
@@ -35,8 +34,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Raw / per-run artifacts that MUST be denied (ignored) — including unanticipated names
-# and report files (reports become committable only in PR2, with the content scanner).
+# Raw / per-run artifacts that MUST be denied (ignored) — including unanticipated names.
 DENIED = [
     "agent-evals/runs/T-1/seed-0/run-log.json",
     "agent-evals/runs/T-1/seed-0/captured.diff",
@@ -54,21 +52,7 @@ DENIED = [
     "agent-evals/reports/2026-smoke-run-log.json",        # "smoke" in name but not allowed
     "agent-evals/reports/2026-smoke-captured-diff.json",
     "agent-evals/reports/raw-v0-vs-v1.json",
-    "agent-evals/reports/2026-01-01-v0-vs-v1.aggregate.json",  # reports deferred to PR2 → denied now
-    "agent-evals/reports/holdout.aggregate.json",             # (PR2 adds report allowlist + scanner)
-    # Free-form data, frozen instruments, AND code: in PR1 the ONLY committable agent-evals/
-    # file is README. task.yaml (mined from merge PRs), playbooks/splits (operator-authored),
-    # and even code (a .py can hold a raw string literal) all wait for PR2's content scanner +
-    # per-file privacy validation. PR2 moves the relevant ones to ALLOWED *and* adds content
-    # validation (changing both .gitignore and this test together is the intended tripwire).
-    "agent-evals/tasks/T-1/task.yaml",
-    "agent-evals/playbooks/v0_naive.md",
-    "agent-evals/splits.yaml",
-    "agent-evals/core/schema.py",                 # code waits for PR2 (NO .py allowlist in PR1)
-    "agent-evals/core/__init__.py",
-    "agent-evals/adapters/bidmate/task_mining.py",
-    "agent-evals/adapters/bidmate/__init__.py",
-    # A direct shallow .py is denied too — an exact-match README-only allowlist closes the
+    # Unanticipated shallow .py files are denied too — exact PR2 module allowlists close the
     # "shallow code path could be a raw sink" bypass (no generalizable .py pattern to match):
     "agent-evals/core/raw_dump.py",
     "agent-evals/adapters/bidmate/raw_dump.py",
@@ -76,17 +60,24 @@ DENIED = [
     "agent-evals/adapters/bidmate/worktrees/wt1/dump.py",
 ]
 
-# The ONLY agent-evals/ file committable in PR1: the curated, in-PR-reviewed README
-# (surface definition). Code / task.yaml / playbooks / splits / reports are all deliberately
-# absent — committable only from PR2 onward, behind the content scanner.
+# PR2 committable surface: exact scanner-backed files only.
 ALLOWED = [
     "agent-evals/README.md",
+    "agent-evals/core/__init__.py",
+    "agent-evals/core/schema.py",
+    "agent-evals/core/metrics.py",
+    "agent-evals/core/report.py",
+    "agent-evals/adapters/bidmate/__init__.py",
+    "agent-evals/adapters/bidmate/task_mining.py",
+    "agent-evals/playbooks/v0_naive.md",
+    "agent-evals/playbooks/v1_spec_first.md",
+    "agent-evals/splits.yaml",
+    "agent-evals/tasks/T-smoke-001/task.yaml",
+    "agent-evals/reports/smoke.aggregate.json",
 ]
 
 # Exact committable allowlist (regex over POSIX rel-paths) for the index-aware guard.
-# Mirrors the PR1 `.gitignore`: README ONLY. An exact-match allowlist (no code/data globs)
-# means there is no generalizable pattern a raw artifact could match — PR2 adds the code +
-# data unignore rules together with the content guard.
+# Mirrors the PR2 `.gitignore`: exact files plus task.yaml / aggregate-report path shapes.
 #
 # `\Z` (NOT `$`): Python's `$` also matches just before a trailing newline, so
 # `^agent-evals/README\.md$` would wrongly accept a tracked path literally named
@@ -95,6 +86,14 @@ ALLOWED = [
 # with `git ls-files -z` framing below so such a path arrives as one record, not a clean split.
 COMMITTABLE_RE = [
     re.compile(r"^agent-evals/README\.md\Z"),
+    re.compile(r"^agent-evals/core/__init__\.py\Z"),
+    re.compile(r"^agent-evals/core/(schema|metrics|report)\.py\Z"),
+    re.compile(r"^agent-evals/adapters/bidmate/__init__\.py\Z"),
+    re.compile(r"^agent-evals/adapters/bidmate/task_mining\.py\Z"),
+    re.compile(r"^agent-evals/playbooks/v(0_naive|1_spec_first)\.md\Z"),
+    re.compile(r"^agent-evals/splits\.yaml\Z"),
+    re.compile(r"^agent-evals/tasks/[^/]+/task\.yaml\Z"),
+    re.compile(r"^agent-evals/reports/[^/]+\.aggregate\.json\Z"),
 ]
 
 
@@ -130,8 +129,8 @@ def test_raw_agent_eval_artifacts_are_gitignored(rel_path: str) -> None:
 @pytest.mark.parametrize("rel_path", ALLOWED)
 def test_public_agent_eval_artifacts_are_committable(rel_path: str) -> None:
     assert not _is_ignored(rel_path), (
-        f"{rel_path} IS gitignored but should be committable in PR1 "
-        "(the curated surface-definition README)."
+        f"{rel_path} IS gitignored but should be committable in PR2 "
+        "(scanner-backed agent-evals surface)."
     )
 
 
@@ -152,9 +151,10 @@ def _extract_bash_array(hook_text: str, name: str) -> str:
 
 
 def test_precommit_hook_enforces_agent_evals_boundary() -> None:
-    """Local pre-commit mirror: `.githooks/pre-commit` must deny every agent-evals/ path and
-    allow only README, so a force-added (`git add -f`) raw artifact is rejected at commit time
-    locally — not only by the CI index guard. Mirrors the hook's documented
+    """Local pre-commit mirror: `.githooks/pre-commit` must deny every agent-evals/ path,
+    allow only the PR2 scanner-backed surface, and invoke the content scanner so a
+    force-added (`git add -f`) raw artifact is rejected at commit time locally — not only by
+    the CI index guard. Mirrors the hook's documented
     "BLOCKED_PATTERNS must mirror .gitignore's ADR 0005 boundary" convention.
     """
     hook = (REPO_ROOT / ".githooks" / "pre-commit").read_text()
@@ -165,24 +165,34 @@ def test_precommit_hook_enforces_agent_evals_boundary() -> None:
         "mirroring the .gitignore deny-by-default rule)."
     )
     assert r"'^agent-evals/README\.md$'" in allowed, (
-        "pre-commit ALLOWED_PATTERNS must permit agent-evals/README.md (the sole PR1 exception)."
+        "pre-commit ALLOWED_PATTERNS must permit agent-evals/README.md."
+    )
+    assert r"'^agent-evals/core/(schema|metrics|report)\.py$'" in allowed, (
+        "pre-commit ALLOWED_PATTERNS must permit exact PR2 core modules."
+    )
+    assert r"'^agent-evals/reports/[^/]+\.aggregate\.json$'" in allowed, (
+        "pre-commit ALLOWED_PATTERNS must permit aggregate reports only."
+    )
+    assert "agent-evals/core/report.py --check-staged" in hook, (
+        "pre-commit must run the PR2 content scanner before path allowlisting."
     )
     # Raw-sink trees must NOT leak into the local allowlist.
     assert "agent-evals/runs" not in allowed
-    assert "agent-evals/reports" not in allowed
+    assert "agent-evals/worktrees" not in allowed
+    assert "agent-evals/captures" not in allowed
 
 
 def test_precommit_hook_enumerates_staged_files_nul_safely() -> None:
     """The hook must enumerate staged files NUL-delimited (`git diff --cached -z` +
     `read -r -d ''`), not newline-delimited. A staged path with an embedded newline or
     control character would otherwise split into multiple tokens and slip past the
-    agent-evals/ README-only block (Codex pre-commit review, issue #1844). NUL framing is
+    agent-evals/ exact allowlist block (Codex pre-commit review, issue #1844). NUL framing is
     robust regardless of `core.quotePath`; `read -r -d ''` stays bash-3.2 compatible.
     """
     hook = (REPO_ROOT / ".githooks" / "pre-commit").read_text()
     assert "git diff --cached -z --name-only --diff-filter=ACMR" in hook, (
         "pre-commit must list staged files with `-z` (NUL-delimited) so newline-bearing "
-        "paths cannot evade the agent-evals/ README-only boundary."
+        "paths cannot evade the agent-evals/ exact allowlist boundary."
     )
     assert "while IFS= read -r -d '' file" in hook, (
         "pre-commit must parse the staged-file list with `read -r -d ''` (NUL records)."
@@ -238,7 +248,7 @@ def test_no_tracked_file_outside_committable_allowlist() -> None:
 def test_committable_regex_rejects_control_char_readme_variants(evasive: str) -> None:
     """The committable allowlist regex must reject any control-char/whitespace variant of the
     README path, so a tracked file named (e.g.) `agent-evals/README.md\\n` cannot masquerade
-    as the sole PR1 exception. This is why `COMMITTABLE_RE` uses `\\Z` (not `$`) and why the
+    as the exact README exception. This is why `COMMITTABLE_RE` uses `\\Z` (not `$`) and why the
     index guard reads `git ls-files -z` — together they ensure such a path is surfaced as one
     record and fails the allowlist (Codex pre-commit review, issue #1844).
     """

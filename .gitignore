@@ -377,25 +377,24 @@ harness/real.yaml
 /node_modules/
 
 # ── agent-evals/ operator-skill eval — aggregate-only data boundary (ADR 0005, ADR 0100) ──
-# DENY-BY-DEFAULT: everything under agent-evals/ is ignored, then only README is unignored
+# DENY-BY-DEFAULT: everything under agent-evals/ is ignored, then PR2 explicitly
+# unignores only the scanner-backed code/task/playbook/split/aggregate-report surface
 # below. Per-run artifacts (run-logs, captured diffs/patches, reviewer inputs, traces,
-# per-run worktrees, reports) AND code/task.yaml/playbooks/splits all carry or could carry
-# raw issue/PR/diff text → never commit in PR1; ANY unanticipated name is denied by default.
-# PR1 committable surface = README ONLY (the curated surface definition). Enforced by
-# tests/test_agent_evals_gitignore.py (deny-by-default pattern + index-aware git ls-files
-# allowlist) and mirrored in .githooks/pre-commit; code + the content-level aggregate-only
-# scanner + report/data allowlist arrive in PR2 (agent-evals/core/report.py).
+# per-run worktrees) and any unanticipated name remain denied by default. The matching
+# commit-time content scanner is agent-evals/core/report.py and is invoked by
+# .githooks/pre-commit before the local ADR 0005 path boundary.
 agent-evals/**
 # Re-include directories so git descends (files stay denied unless explicitly unignored):
 !agent-evals/**/
-# PR1 commits exactly ONE file under agent-evals/: the curated, in-PR-reviewed README
-# (the surface definition). It is the ONLY exact-path exception. Everything else — code
-# (core/, adapters/), mined task.yaml, playbooks, splits.yaml, reports — is free-form text
-# that could carry raw issue/PR/RFP content (even a shallow code path like core/schema.py
-# could hold a string literal), so allowlisting ANY of it before the PR2 content scanner
-# exists would be a false aggregate-only claim. PR2 adds each unignore rule (exact module
-# filenames and/or `**` globs for code + tasks/*/task.yaml · playbooks/*.md · splits.yaml ·
-# reports/*.aggregate.json) together with the content-level privacy validator
-# (core/report.py) and a matching index-guard case. PR1 therefore asserts ONLY the path
-# boundary: README in, everything else out.
 !agent-evals/README.md
+!agent-evals/core/__init__.py
+!agent-evals/core/schema.py
+!agent-evals/core/metrics.py
+!agent-evals/core/report.py
+!agent-evals/adapters/bidmate/__init__.py
+!agent-evals/adapters/bidmate/task_mining.py
+!agent-evals/playbooks/v0_naive.md
+!agent-evals/playbooks/v1_spec_first.md
+!agent-evals/splits.yaml
+!agent-evals/tasks/*/task.yaml
+!agent-evals/reports/*.aggregate.json
