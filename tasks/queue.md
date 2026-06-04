@@ -89,12 +89,84 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 76 | `T-2026-0076` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; spun off from T-2026-0029 page-aware re-measurement. MiniLM page-aware `real100_v2` rebuild resolved the page blocker but collapsed doc-level retrieval (gold-doc-in-retrieved 61.4% -> 12.1%) despite 88.3% universe coverage (answerable-with-gold; 91.7% all-cases); the diagnostic renderer's new `retrieval_integrity_suspect` signal points here. Gates every downstream `real100_v2` optimization task (T-2026-0030/0032/0033). Issue: TBD (created when task starts). |
 | 77 | `T-2026-0077` | `backlog` | Maintainer -> CI Reviewer -> Reviewer | issue #1800; **due 2026-06-09** — ui-smoke(#1799) nightly 표본으로 required status check 승격 판단. durable cron 이 cmux 미지원 → 이 queue 행이 리마인드 앵커(다음 세션 표면화). flaky 0 + nightly ≥5회면 승격 제안, 실패 있으면 run 로그 분석 + 추가 관찰. |
 | 78 | `T-2026-0078` | `backlog` | Architect -> Planner -> Implementer -> Deep Reviewer -> Reviewer | agent-loop `expanded-eight` 토폴로지의 single write-lease Implementer 병목 재조정 **탐색**. 8역할 중 Implementer 만 `write_lease_owner=true`(나머지 7 read-only) → 구현 직렬화가 throughput 제약. 설계 미확정(현행 유지 / Implementer ×M + shared reviewer pool / 역할 축소) → architect 옵션 비교 + 순차단계 분석 + ADR(load-bearing; ADR 0080 single-writer 제약과 충돌 분석) 선행 필요. `ready` 아님 = 자동 루프가 섣불리 구현 못 하게. 진단 출처: 2026-06-03 세션. 시각화: `scripts/render_agent_loop_board.py` 토폴로지 맵. |
-| 79 | `T-2026-0079` | `in_progress` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1844; `agent-evals/` operator-skill eval 측정 표면 thin slice. 독립변수=운영자 frozen playbook vN(v0/v1), model·repo·budget 고정; holdout paired delta(절대율 비주장, common-mode cancellation); cross-family reviewer(`reviewer_family != candidate_family` fail-closed, codex 는 candidate 가 non-codex 일 때만)=acceptance primary arbiter(ADR 0064 회피); aggregate-only(ADR 0005). 3-PR stack: **PR1 ADR 0100+scaffold (진행 중)** → PR2 core+mining(#1336–1820 hidden-test gate)+3-task smoke report → PR3 full runner(`git worktree add --detach`, ≥3 seed)+holdout report. 비 load-bearing. deep-interview→omc-plan consensus(Critic APPROVE) 산. |
+| 79 | `T-2026-0079` | `done` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1844/#1969/#2374 CLOSED; `agent-evals/` operator-skill eval thin slice **완료** (2026-06-04). 3-PR stack 전부 머지: PR1 #1964 (ADR 0100+scaffold) → PR2 #2343 (core+content scanner+playbook v0/v1+3-task synthetic smoke) → PR3 #2411 (full runner `git worktree add --detach` ≥3 seed + cross-family oracle `reviewer_family != candidate_family` fail-closed + holdout v0-vs-v1 byte-identical smoke aggregate). cross-family 리뷰 round2 #2446(6 fix)+round3 #2455(2 real+live fix, 1 latent defer, 1 contrived decline) → real 발견 3→6→2 점감 = live 표면 수렴(thesis 자기증명). 비 load-bearing. 실제 mining(#1336–1820)+external-reviewer payload egress(public-attestation-only) = deferred axis (thin slice 밖). detail: `## T-2026-0079`. |
 
 ## Examples
 
 - [`tasks/examples/benchmark-hardening.md`](examples/benchmark-hardening.md): benchmark hardening task 작성 예시.
 - [`tasks/examples/eval-regression-safety.md`](examples/eval-regression-safety.md): eval regression safety task 작성 예시.
+
+## T-2026-0079 — agent-evals operator-skill eval (thin slice)
+
+- ID: T-2026-0079
+- Title: agent-evals operator-skill eval (thin slice)
+- Status: done
+- Owner role: Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
+- Created: 2026-06-03
+- Last updated: 2026-06-04
+
+### Goal
+
+코딩 에이전트 **운영자(operator) 능력**을 측정 가능한 표면으로 만든다. 독립변수 =
+운영자의 frozen playbook vN (v0 naive / v1 spec-first); model·repo·budget 고정.
+holdout paired delta (v1−v0) 만 주장하고 절대율은 주장하지 않는다 (common-mode
+cancellation). 채점은 cross-family reviewer (`reviewer_family != candidate_family`
+fail-closed) 가 acceptance oracle 로 작동 (ADR 0064 self-judge pathology 회피).
+산출물은 aggregate-only (ADR 0005).
+
+### 완료 요약 (전부 MERGED, 2026-06-04)
+
+- **PR1 #1964** (issue #1844) — ADR 0100 (proposed) + `agent-evals/README.md` +
+  privacy scaffold (`.gitignore` deny-by-default + index-aware CI 가드 +
+  pre-commit mirror). README exact-path 단 하나만 commit (코드/task/playbook/report
+  는 PR2 content scanner 까지 연기).
+- **PR2 #2343** (issue #1969) — `agent-evals/core` (schema / paired-delta metrics /
+  content scanner) + sanitized task mining + playbook v0/v1 + 3-task synthetic smoke
+  + counts-only smoke aggregate. content scanner 가 denylist → 재귀 positive
+  allowlist 로 수렴 (cross-family 5-pass).
+- **PR3 #2411** (issue #2374) — full runner (`git worktree add --detach`, ≥3 seed) +
+  cross-family oracle (게이트 통과 시에만 egress, privacy-preserving order) +
+  manifest-based report scoping (orphan run-log 폴딩 차단, 삭제 없음) + holdout
+  v0-vs-v1 byte-identical smoke aggregate.
+
+### Cross-family 리뷰 수렴 (thesis 자기증명)
+
+- **Round 1** (PR-bot on #2411): 3 real (egress/reviewer/runner 게이트가 truthiness
+  로 열림 → strict `is True` fail-closed).
+- **Round 2** → **PR #2446**: 6 real (게이트/egress 경계 전부 `is True` 통일 +
+  manifest basename 가드 + per-accepted 메트릭 = 총 effort/accepted, zero-accepted
+  시 None — Goodhart 회피).
+- **Round 3** → **PR #2455**: 2 real+live (`Path("..").name == ".."` basename 우회
+  → `n in ("", ".", "..")` 명시 거부; `deleted_paths` 비숫자 truthy DESTRUCTIVE
+  fail-open → `float()` 시도 후 except 에서 fail-closed) + 1 latent **defer**
+  (reviewer stdout 파서, 미배선 경로) + 1 contrived **decline** (symlink, 현실
+  벡터 없음).
+- real 발견 3 → 6 → 2 점감, 잔여가 비구조적 (latent/contrived) = **live 표면 수렴**.
+  4차 리뷰 불필요.
+
+### Non-Goals (thin slice 밖 — deferred axis)
+
+- 실제 task mining (#1336–1820 PR corpus) 확장 — 현재 합성 3-task smoke 만 (ADR 0064
+  report-before-expansion).
+- external-reviewer payload egress 실제 실행 (`_default_codex_reviewer`) — 배선은
+  됐으나 suite 는 inject 로 실egress 미실행; `public_attestation=True` 게이트.
+- live-intervention quality axis (static frozen-playbook quality 로 construct 한정).
+
+### 교훈 (validity-triage)
+
+cross-family 발견을 무조건 다 고치지 않는다 — **real+live = fix / latent = defer /
+contrived = decline** (각 문서화). fail-closed 규율은 단일 함수가 아니라 **모든
+경계** (decide_verdict + adapter/runner/egress/report) 에서 `is True` 라야 truthy
+우회 차단. manifest 스코핑은 이전 다른-shape matrix 의 orphan 로그를 **삭제 없이**
+배제 (공유 트리 `rm -rf` 데이터로스 가드 준수).
+
+### Related Plan / Issue / PR Links
+
+- Spec: `.omc/specs/deep-interview-operator-skill-eval.md`,
+  plan: `.omc/plans/operator-skill-eval-plan.md`.
+- ADR: 0100 (operator-skill eval 측정 표면), 0064 (self-review Goodhart/self-reference 회피), 0005 (aggregate-only).
+- Issues: #1844 / #1969 / #2374 (전부 CLOSED), closure issue #2461.
+- PRs: #1964, #2343, #2411, #2446, #2455 (전부 MERGED).
 
 ## T-2026-0078 — Agent-loop topology rebalance (Implementer throughput)
 
