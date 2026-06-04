@@ -152,6 +152,23 @@ class PayloadCoercionTest(unittest.TestCase):
         result = _payload_to_extraction({})
         self.assertEqual(MetadataExtraction().as_dict(), result.as_dict())
 
+    def test_unknown_payload_fields_are_ignored(self) -> None:
+        # Tool schemas disallow additionalProperties, but defensive coercion
+        # still receives arbitrary JSON from external SDKs. Unknown fields must
+        # not leak into the stable eight-field MetadataExtraction contract.
+        result = _payload_to_extraction(
+            {
+                "agency": "기관 X",
+                "project_name": "사업 X",
+                "hallucinated_priority": "긴급",
+                "raw_unstructured_text": "원문 조각",
+            }
+        )
+        self.assertEqual("기관 X", result.agency)
+        self.assertEqual("사업 X", result.project_name)
+        self.assertNotIn("hallucinated_priority", result.as_dict())
+        self.assertNotIn("raw_unstructured_text", result.as_dict())
+
     def test_unparseable_budget_dropped_to_none(self) -> None:
         result = _payload_to_extraction({"budget_amount": "약 5억원"})
         self.assertIsNone(result.budget_amount)
