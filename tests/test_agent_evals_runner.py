@@ -1048,3 +1048,58 @@ def test_detect_hard_gates_non_numeric_deleted_paths_fails_closed() -> None:
     for falsy in ("0", 0, "", None):
         assert HardGate.DESTRUCTIVE not in ob.detect_hard_gates({"deleted_paths": falsy})
     assert HardGate.DESTRUCTIVE not in ob.detect_hard_gates({})
+
+
+# --------------------------------------------------------------------------- #
+# committed holdout-v0-vs-v1 smoke aggregate — e2e reproduction lock (#2470)   #
+# --------------------------------------------------------------------------- #
+
+
+def test_committed_holdout_aggregate_reproduced_by_stub_pipeline(tmp_path) -> None:
+    # agent-evals/reports/holdout-v0-vs-v1.aggregate.json is a committed BEHAVIOR
+    # artifact (the canonical PR3 stub-surface smoke), but until now it was only
+    # verified by hand across PRs. Lock the byte-identical contract end-to-end: run
+    # the matrix (deterministic stub candidate + in-process stub cross-family
+    # reviewer) and the report, then require the rebuilt aggregate dict to EQUAL the
+    # committed one. A future change to the runner / report / stub logic that silently
+    # drifts the committed aggregate fails here, forcing an intentional regeneration.
+    #
+    # No real git and no external egress: subprocess_run is faked, so the per-trial
+    # `git worktree add --detach` / `remove` / `prune` calls are no-ops (the stub
+    # candidate makes no repo change), and the reviewer is the in-process stub. This
+    # complements test_agent_evals_core.test_generated_holdout_report_passes_scanner_*,
+    # which guards the privacy/aggregate-only boundary rather than reproduction.
+    run_script = load_module("scripts/agent_evals_run.py", "agent_evals_run_holdout_repro")
+    report_script = load_module("scripts/agent_evals_report.py", "agent_evals_report_holdout_repro")
+
+    class _Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    runs_dir = tmp_path / "runs"
+    written = run_script.run(
+        tasks=run_script.SMOKE_HOLDOUT_TASKS,
+        # start_commit does not appear in the aggregate; any fixed value is fine and
+        # keeps the test independent of the checkout's real HEAD.
+        start_commit="deadbeefcafe1234",
+        runs_dir=runs_dir,
+        # public attestation must be open or the stub reviewer is never consulted and
+        # every trial caps at NECESSARY_GATE_ONLY (no ACCEPTED -> different aggregate).
+        public_attestation=True,
+        use_real=False,
+        subprocess_run=lambda *a, **k: _Proc(),
+    )
+    # 3 smoke tasks x 2 playbooks (v0_naive, v1_spec_first) x 3 default seeds.
+    assert len(written) == 18
+
+    logs = report_script._read_run_logs(runs_dir)
+    report = report_script.build_report(
+        logs, report_id="holdout-v0-vs-v1", num_resamples=1000, alpha=0.05, seed=17
+    )
+    committed = json.loads(
+        (REPO_ROOT / "agent-evals" / "reports" / "holdout-v0-vs-v1.aggregate.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert report == committed
