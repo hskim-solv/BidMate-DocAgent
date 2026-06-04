@@ -8,6 +8,7 @@ and the str-result wrap path are pure-python and runnable in CI.
 from __future__ import annotations
 
 import importlib.util
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,6 +29,13 @@ class GetOcrProviderFactoryTest(unittest.TestCase):
 
     def test_donut_resolves_without_loading_model(self) -> None:
         self.assertIs(get_ocr_provider("donut"), donut_ocr_provider)
+
+    def test_env_var_donut_resolves_without_loading_model(self) -> None:
+        os.environ["BIDMATE_VISUAL_OCR"] = "donut"
+        try:
+            self.assertIs(get_ocr_provider(), donut_ocr_provider)
+        finally:
+            os.environ.pop("BIDMATE_VISUAL_OCR", None)
 
     def test_unknown_name_lists_valid_options(self) -> None:
         with self.assertRaises(ValueError) as ctx:
