@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from scripts.build_index_from_parse_checkpoints import (
     _checkpoint_signature,
     _existing_index_matches,
@@ -42,6 +44,26 @@ def test_load_documents_from_parse_checkpoints(tmp_path):
     assert [doc["doc_id"] for doc in docs] == ["doc_001"]
     assert docs[0]["sections"][0]["page_span"] == [1, 1]
 
+
+
+def test_load_documents_requires_checkpoint_directory(tmp_path):
+    missing_dir = tmp_path / "_parse_checkpoints"
+
+    with pytest.raises(ValueError, match="must be a directory"):
+        _load_documents(missing_dir)
+
+
+def test_load_documents_ignores_rows_without_document_dict(tmp_path):
+    checkpoint_dir = tmp_path / "_parse_checkpoints"
+    _write_checkpoint(checkpoint_dir)
+    (checkpoint_dir / "row_000.json").write_text(
+        json.dumps({"status": "skipped", "document": "not-a-dict"}),
+        encoding="utf-8",
+    )
+
+    docs = _load_documents(checkpoint_dir)
+
+    assert [doc["doc_id"] for doc in docs] == ["doc_001"]
 
 def test_checkpoint_signature_changes_when_checkpoint_content_changes(tmp_path):
     checkpoint_dir = tmp_path / "_parse_checkpoints"
@@ -106,3 +128,21 @@ def test_existing_checkpoint_index_reuse_requires_matching_signature(tmp_path):
 
     assert reusable is False
     assert "signature" in reason
+
+    mismatch_cases = [
+        ({"model": "different-model"}, "model"),
+        ({"embedding_backend": "hashing"}, "backend"),
+        ({"chunking_strategy": "fixed"}, "chunking"),
+    ]
+    for overrides, expected_reason in mismatch_cases:
+        reusable, reason = _existing_index_matches(
+            output_dir=output_dir,
+            checkpoint_dir=checkpoint_dir,
+            signature=signature,
+            model=overrides.get("model", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
+            embedding_backend=overrides.get("embedding_backend", "sentence-transformers"),
+            chunking_strategy=overrides.get("chunking_strategy", "section"),
+        )
+
+        assert reusable is False
+        assert expected_reason in reason
