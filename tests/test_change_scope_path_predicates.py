@@ -168,6 +168,7 @@ def test_is_pytest_path_adr0100_agent_evals_guard() -> None:
         ("a/b", "a/b"),             # 변화 없음
         ("./", ""),                 # 전부 ./ → 빈 문자열
         ("  x  ", "x"),             # 공백만 strip
+        ("a/./b.py", "a/./b.py"),    # 내부 ./ 세그먼트는 canonicalize 하지 않음
     ],
 )
 def test_normalize(raw: str, expected: str) -> None:
