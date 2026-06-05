@@ -134,6 +134,22 @@ def test_make_citation_coerces_canonical_pdf_text_span_hash_to_str() -> None:
     assert citation["citation_label"] == "원본 PDF p.3"
 
 
+def test_make_citation_treats_citation_basis_as_canonical_pdf_path() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "section_path": ["root", "attachments"],
+        "page_span": [6, 8],
+        "metadata": {"citation_basis": "libreoffice_converted_pdf"},
+    })
+
+    assert citation["section_path"] == ["root", "attachments"]
+    assert citation["citation_basis"] == "libreoffice_converted_pdf"
+    assert citation["citation_label"] == "LibreOffice 변환 PDF pp.6-8"
+    assert "text_source" not in citation
+
+
 def test_make_citation_omits_empty_section_path_for_canonical_pdf() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
