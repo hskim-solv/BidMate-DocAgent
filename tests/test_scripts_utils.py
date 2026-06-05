@@ -129,6 +129,11 @@ def test_stable_json_preserves_non_ascii_and_trailing_newline() -> None:
     assert json.loads(out) == {"기관": "행안부"}
 
 
+def test_stable_json_uses_two_space_nested_indent() -> None:
+    out = stable_json({"outer": {"inner": 1}})
+    assert out == '{\n  "outer": {\n    "inner": 1\n  }\n}\n'
+
+
 # --- repo_path / rel_path: ROOT_DIR 경계 ---
 
 
