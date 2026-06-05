@@ -117,6 +117,31 @@ def test_make_citation_preserves_canonical_pdf_metadata_and_label() -> None:
     }
 
 
+def test_make_citation_omits_empty_canonical_pdf_metadata() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "page_span": [1, 1],
+        "metadata": {
+            "text_source": "pdf_pymupdf4llm",
+            "citation_basis": "",
+            "converted_pdf_sha256": "",
+            "converted_pdf_page_count": None,
+            "citation_pdf_sha256": "citation-sha",
+            "citation_pdf_page_count": "",
+        },
+    })
+
+    assert citation["text_source"] == "pdf_pymupdf4llm"
+    assert citation["citation_pdf_sha256"] == "citation-sha"
+    assert citation["citation_label"] == "PDF p.1"
+    assert "citation_basis" not in citation
+    assert "converted_pdf_sha256" not in citation
+    assert "converted_pdf_page_count" not in citation
+    assert "citation_pdf_page_count" not in citation
+
+
 # --- format_metadata_claim_value: budget 한국 통화 포맷 ---
 
 
