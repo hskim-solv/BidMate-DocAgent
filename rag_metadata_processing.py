@@ -112,7 +112,8 @@ def normalize_regions(value: Any) -> list[dict[str, Any]]:
 def normalize_page_span(value: Any, regions: list[dict[str, Any]]) -> list[int] | None:
     if isinstance(value, list) and len(value) == 2:
         try:
-            return [int(value[0]), int(value[1])]
+            start, end = int(value[0]), int(value[1])
+            return [min(start, end), max(start, end)]
         except (TypeError, ValueError):
             pass
     page_numbers = [
