@@ -147,6 +147,11 @@ def test_metadata_field_requested_matches_numeric_value() -> None:
     assert metadata_field_requested("budget", 1000, {"topics": ["1000"]}) is True
 
 
+def test_metadata_field_requested_matches_raw_key_when_no_label_map() -> None:
+    # label map 이 없는 metadata key 는 raw key 자체가 검색 대상으로 사용된다.
+    assert metadata_field_requested("custom_field", "값", {"topics": ["custom field"]}) is True
+
+
 def test_metadata_field_requested_matches_compacted_value() -> None:
     # value 쪽 공백도 compact 되어 topic '행정안전부' 와 매칭된다.
     assert metadata_field_requested("agency", "행정 안전부", {"topics": ["행정안전부"]}) is True
