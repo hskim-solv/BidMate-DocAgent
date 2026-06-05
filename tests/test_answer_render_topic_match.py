@@ -152,6 +152,11 @@ def test_metadata_field_requested_matches_raw_key_when_no_label_map() -> None:
     assert metadata_field_requested("custom_field", "값", {"topics": ["custom field"]}) is True
 
 
+def test_metadata_field_requested_matches_later_topic_after_non_match() -> None:
+    # 여러 topic 중 앞 topic 이 빗나가도 뒤 topic 이 label/value 에 맞으면 True 다.
+    assert metadata_field_requested("agency", "행정안전부", {"topics": ["예산", "행정 안전부"]}) is True
+
+
 def test_metadata_field_requested_matches_compacted_value() -> None:
     # value 쪽 공백도 compact 되어 topic '행정안전부' 와 매칭된다.
     assert metadata_field_requested("agency", "행정 안전부", {"topics": ["행정안전부"]}) is True
