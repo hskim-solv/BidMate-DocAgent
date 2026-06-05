@@ -103,6 +103,10 @@ def test_normalize_page_span_ignores_wrong_length_pair() -> None:
     assert normalize_page_span([1, 2, 3], [{"page_number": 4}]) == [4, 4]
 
 
+def test_normalize_page_span_invalid_string_pair_falls_back_to_regions() -> None:
+    assert normalize_page_span(["bad", "span"], [{"page_number": 4}]) == [4, 4]
+
+
 # --- normalize_document_sections ---
 
 
