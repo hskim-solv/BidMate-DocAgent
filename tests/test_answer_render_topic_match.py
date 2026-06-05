@@ -120,6 +120,11 @@ def test_sentence_topic_matches() -> None:
     assert sentence_has_verification_topic("예산 집행 내용", {"topics": ["예산"]}) is True
 
 
+def test_sentence_topic_matches_case_insensitively() -> None:
+    # sentence/topic 모두 lower 처리되어 영문 topic 대소문자 차이는 매칭을 막지 않는다.
+    assert sentence_has_verification_topic("Budget execution detail", {"topics": ["budget"]}) is True
+
+
 def test_sentence_topic_no_match_is_false() -> None:
     assert sentence_has_verification_topic("계약 내용", {"topics": ["예산"]}) is False
 
