@@ -82,6 +82,11 @@ def test_html_comment_block_headings_skipped() -> None:
     assert _headings(text) == ["# Keep", "# After"]
 
 
+def test_single_line_html_comment_heading_skipped() -> None:
+    text = "# Keep\n<!-- # In Comment -->\n# After\n"
+    assert _headings(text) == ["# Keep", "# After"]
+
+
 # ----------------------------------------------------------------------
 # ATX 인정 경계
 # ----------------------------------------------------------------------
