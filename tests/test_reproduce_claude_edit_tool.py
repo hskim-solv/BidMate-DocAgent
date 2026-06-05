@@ -24,6 +24,17 @@ def test_classify_preserves_reproducer_symptom_order():
         assert repro.classify(**kwargs, timeout=30) == expected
 
 
+def test_classify_detects_tool_use_unique_error_from_stderr():
+    assert repro.classify(
+        exit_code=1,
+        stdout="",
+        stderr="API error: tool_use ids must be unique",
+        edited=False,
+        duration=1,
+        timeout=30,
+    ) == "S2_tool_use_ids"
+
+
 def test_render_markdown_table_escapes_pipe_cells():
     result = repro.CellResult(
         label="cell", cmd=["claude"], exit_code=None, duration_s=3.5,
