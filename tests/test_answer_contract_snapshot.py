@@ -116,6 +116,43 @@ class AnswerContractShapeTest(unittest.TestCase):
         cls.observed = _build_contract_shape()
         cls.golden = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
 
+    def test_contract_subset_excludes_additive_observability_fields(self) -> None:
+        subset = _extract_contract_subset({
+            "answer": {
+                "schema_version": 2,
+                "status": "supported",
+                "status_reason": {"code": "verified"},
+                "query_type": "single_doc",
+                "claims": [],
+                "summary": "요약",
+                "insufficiency": None,
+                "analysis": {"debug": "answer-local"},
+            },
+            "evidence": [],
+            "answer_text": "요약",
+            "analysis": {"debug": "top-level"},
+            "plan": {"steps": []},
+            "diagnostics": {"latency_ms": 1},
+            "trace": ["event"],
+            "conversation_state": {"turn": 1},
+            "mode": "agentic_full",
+        })
+
+        self.assertEqual(
+            set(subset),
+            {"answer", "evidence", "answer_text"},
+        )
+        self.assertNotIn("analysis", subset["answer"])
+        for observability_key in (
+            "analysis",
+            "plan",
+            "diagnostics",
+            "trace",
+            "conversation_state",
+            "mode",
+        ):
+            self.assertNotIn(observability_key, subset)
+
     def test_schema_version_is_pinned_to_two(self) -> None:
         # The literal value is not in the shape signature (shape only
         # captures the type "int"), so we re-read the answer dict
