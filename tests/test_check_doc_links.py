@@ -150,6 +150,11 @@ def test_fragment_strips_path_line_suffix():
     assert split_fragment("foo.md:10#bar") == ("foo.md", "bar")
 
 
+def test_fragment_angle_brackets_and_title_stripped():
+    assert split_fragment("<foo.md#bar>") == ("foo.md", "bar")
+    assert split_fragment('foo.md#bar "Title"') == ("foo.md", "bar")
+
+
 # ---------------------------------------------------------------------------
 # normalize_target — href → filesystem-checkable path, or None to skip
 # ---------------------------------------------------------------------------
