@@ -173,6 +173,20 @@ def test_make_citation_omits_empty_section_path_for_canonical_pdf() -> None:
     assert "section_path" not in citation
 
 
+def test_make_citation_omits_non_list_section_path_for_canonical_pdf() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "section_path": ("root", "attachments"),
+        "page_span": [2, 2],
+        "metadata": {"citation_basis": "source_pdf"},
+    })
+
+    assert citation["citation_basis"] == "source_pdf"
+    assert "section_path" not in citation
+
+
 def test_make_citation_omits_empty_canonical_pdf_metadata() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
