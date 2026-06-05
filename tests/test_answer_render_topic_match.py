@@ -56,6 +56,18 @@ def test_render_claim_with_citation_ids() -> None:
     assert render_answer_text(answer) == "요약\n- 행안부: 예산 1조 [c1, c2]"
 
 
+def test_render_multiple_claims_preserves_ordered_lines() -> None:
+    answer = {
+        "summary": "요약",
+        "claims": [
+            {"target": "행안부", "claim": "예산 1조", "citations": []},
+            {"target": "교육부", "claim": "마감 6월", "citations": []},
+        ],
+    }
+
+    assert render_answer_text(answer) == "요약\n- 행안부: 예산 1조\n- 교육부: 마감 6월"
+
+
 def test_render_claim_filters_blank_citation_ids() -> None:
     answer = {
         "summary": "요약",
