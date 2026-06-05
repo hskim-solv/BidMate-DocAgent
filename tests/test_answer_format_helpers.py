@@ -19,6 +19,7 @@ from rag_answer import (
     citation_label,
     claim_target,
     format_metadata_claim_value,
+    make_citation,
 )
 
 
@@ -72,6 +73,48 @@ def test_citation_label_basis_prefix() -> None:
 def test_citation_label_single_vs_range_page() -> None:
     assert citation_label("source_pdf", [7, 7]) == "원본 PDF p.7"  # single
     assert citation_label("source_pdf", [3, 5]) == "원본 PDF pp.3-5"  # range
+
+
+# --- make_citation: canonical PDF metadata passthrough ---
+
+
+def test_make_citation_preserves_canonical_pdf_metadata_and_label() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "section": "입찰 개요",
+        "agency": "조달청",
+        "section_path": ["root", 2],
+        "page_span": [2, 4],
+        "text_span_hash": "span-sha",
+        "metadata": {
+            "text_source": "pdf_pymupdf4llm",
+            "citation_basis": "source_pdf",
+            "converted_pdf_sha256": "converted-sha",
+            "converted_pdf_page_count": 12,
+            "citation_pdf_sha256": "citation-sha",
+            "citation_pdf_page_count": 8,
+        },
+    })
+
+    assert citation == {
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "section": "입찰 개요",
+        "agency": "조달청",
+        "section_path": ["root", "2"],
+        "page_span": [2, 4],
+        "text_source": "pdf_pymupdf4llm",
+        "citation_basis": "source_pdf",
+        "converted_pdf_sha256": "converted-sha",
+        "converted_pdf_page_count": 12,
+        "citation_pdf_sha256": "citation-sha",
+        "citation_pdf_page_count": 8,
+        "text_span_hash": "span-sha",
+        "citation_label": "원본 PDF pp.2-4",
+    }
 
 
 # --- format_metadata_claim_value: budget 한국 통화 포맷 ---
