@@ -86,6 +86,11 @@ def test_metadata_claims_requested_field_rendered() -> None:
     assert out == ["사업예산: 1,000,000원"]
 
 
+def test_metadata_claims_zero_value_is_rendered() -> None:
+    out = metadata_claim_sentences({"metadata": {"budget": 0}}, {"topics": ["예산"]})
+    assert out == ["사업예산: 0원"]
+
+
 def test_metadata_claims_unrequested_field_filtered_out() -> None:
     # 같은 값이라도 topic 이 매칭 안 되면 metadata_field_requested 필터로 제외 → []
     out = metadata_claim_sentences({"metadata": {"budget": 1000000}}, {"topics": ["일정"]})
