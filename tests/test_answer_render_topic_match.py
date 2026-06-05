@@ -31,6 +31,11 @@ def test_render_summary_only() -> None:
     assert render_answer_text({"summary": "요약문"}) == "요약문"
 
 
+def test_render_summary_strips_outer_whitespace() -> None:
+    # summary 는 strip 된 뒤 빈 줄 필터를 거쳐 출력된다.
+    assert render_answer_text({"summary": "  요약문 \n"}) == "요약문"
+
+
 def test_render_empty_summary_omits_blank_line() -> None:
     # summary 가 비면 빈 line 으로 필터되어 선행 빈 줄이 생기지 않는다
     # (빈 line 제외 필터가 없으면 '\n- A: C [c1]' 로 새어 KILL)
