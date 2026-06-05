@@ -156,6 +156,29 @@ class AnswerContractShapeTest(unittest.TestCase):
             },
         )
 
+    def test_contract_subset_keeps_answer_shape_when_answer_missing(self) -> None:
+        subset = _extract_contract_subset({
+            "evidence": [{"chunk_id": "doc-1"}],
+            "answer_text": "근거만 있음",
+        })
+
+        self.assertEqual(
+            subset,
+            {
+                "answer": {
+                    "schema_version": None,
+                    "status": None,
+                    "status_reason": None,
+                    "query_type": None,
+                    "claims": None,
+                    "summary": None,
+                    "insufficiency": None,
+                },
+                "evidence": [{"chunk_id": "doc-1"}],
+                "answer_text": "근거만 있음",
+            },
+        )
+
     def test_contract_subset_excludes_additive_observability_fields(self) -> None:
         subset = _extract_contract_subset({
             "answer": {
