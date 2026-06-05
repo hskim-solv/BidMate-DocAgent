@@ -147,3 +147,18 @@ def test_metadata_clarification_strips_agency_project() -> None:
         ),
     )
     assert "행안부 · 사업A (doc1)" in out
+
+
+def test_metadata_clarification_duplicate_doc_id_keeps_first_label() -> None:
+    out = metadata_clarification_answer(
+        "예산은?",
+        _analysis(
+            ["doc1"],
+            [
+                {"doc_id": "doc1", "agency": "행안부", "project": "사업A"},
+                {"doc_id": "doc1", "agency": "교육부", "project": "사업B"},
+            ],
+        ),
+    )
+    assert "행안부 · 사업A (doc1)" in out
+    assert "교육부 · 사업B (doc1)" not in out
