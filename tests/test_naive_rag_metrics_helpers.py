@@ -30,6 +30,14 @@ def test_summarize_metric_reports_numeric_count_and_missing_values() -> None:
     }
 
 
+def test_summarize_metric_clamps_missing_when_total_is_smaller_than_values() -> None:
+    assert summarize_metric([1, 2, 3], total=1) == {
+        "mean": 2.0,
+        "n": 3,
+        "missing": 0,
+    }
+
+
 def test_summarize_case_metrics_and_latency_use_declared_totals() -> None:
     cases = [{"score": 1.0}, {"score": None}, {"other": 5}]
 
