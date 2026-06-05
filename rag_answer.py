@@ -202,6 +202,17 @@ def answer_status_reason(
     verification_reasons: list[str],
     code: str | None = None,
 ) -> dict[str, Any]:
+    expected_statuses = frozenset({
+        ANSWER_STATUS_SUPPORTED,
+        ANSWER_STATUS_PARTIAL,
+        ANSWER_STATUS_INSUFFICIENT,
+    })
+    if status not in expected_statuses:
+        raise ValueError(
+            f"answer_status_reason: unknown status {status!r}; "
+            f"expected one of {sorted(expected_statuses)}"
+        )
+
     if code is None:
         if status == ANSWER_STATUS_SUPPORTED:
             code = ANSWER_STATUS_REASON_VERIFIED
@@ -213,7 +224,7 @@ def answer_status_reason(
                 code = ANSWER_STATUS_REASON_PARTIAL_TOPIC_GROUNDING
             else:
                 code = ANSWER_STATUS_REASON_PARTIAL_COMPARISON
-        else:
+        elif status == ANSWER_STATUS_INSUFFICIENT:
             code = ANSWER_STATUS_REASON_INSUFFICIENT_EVIDENCE
     elif code not in KNOWN_ANSWER_STATUS_REASON_CODES:
         # Issue #759 (RAG senior-review critique #2): the four code

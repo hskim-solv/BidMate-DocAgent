@@ -101,6 +101,33 @@ class TestAnswerStatusReasonEnum(unittest.TestCase):
         )
         self.assertIn(result["code"], KNOWN_ANSWER_STATUS_REASON_CODES)
 
+    def test_unknown_status_raises_valueerror(self) -> None:
+        with self.assertRaises(ValueError) as context:
+            answer_status_reason(
+                status="unknown_status",
+                verified=False,
+                verification_reasons=[],
+            )
+
+        message = str(context.exception)
+        self.assertIn("unknown_status", message)
+        self.assertIn(ANSWER_STATUS_SUPPORTED, message)
+        self.assertIn(ANSWER_STATUS_PARTIAL, message)
+        self.assertIn(ANSWER_STATUS_INSUFFICIENT, message)
+
+    def test_unknown_status_raises_even_with_known_code_override(self) -> None:
+        with self.assertRaises(ValueError) as context:
+            answer_status_reason(
+                status="unknown_status",
+                verified=True,
+                verification_reasons=[],
+                code=ANSWER_STATUS_REASON_VERIFIED,
+            )
+
+        message = str(context.exception)
+        self.assertIn("unknown_status", message)
+        self.assertIn(ANSWER_STATUS_SUPPORTED, message)
+
     def test_verified_flag_is_normalized_to_bool(self) -> None:
         for raw_verified, expected in ((1, True), (0, False)):
             with self.subTest(raw_verified=raw_verified):
