@@ -48,6 +48,10 @@ def test_claim_target_skips_falsy_fields_in_chain() -> None:
     assert claim_target({"agency": None, "title": None, "doc_id": "d"}) == "d"
 
 
+def test_claim_target_skips_falsy_numeric_fields_in_chain() -> None:
+    assert claim_target({"agency": 0, "title": "사업명"}) == "사업명"
+
+
 def test_claim_target_coerces_to_str() -> None:
     assert claim_target({"agency": 123}) == "123"
 
