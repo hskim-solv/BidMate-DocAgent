@@ -142,6 +142,26 @@ def test_make_citation_omits_empty_canonical_pdf_metadata() -> None:
     assert "citation_pdf_page_count" not in citation
 
 
+def test_make_citation_treats_non_dict_metadata_as_empty() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "page_span": [4, 4],
+        "metadata": ["not", "a", "dict"],
+        "text_span_hash": "span-sha",
+    })
+
+    assert citation == {
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "section": "",
+        "agency": "",
+        "page_span": [4, 4],
+    }
+
+
 # --- format_metadata_claim_value: budget 한국 통화 포맷 ---
 
 
