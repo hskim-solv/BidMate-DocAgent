@@ -107,6 +107,10 @@ def test_normalize_page_span_invalid_string_pair_falls_back_to_regions() -> None
     assert normalize_page_span(["bad", "span"], [{"page_number": 4}]) == [4, 4]
 
 
+def test_normalize_page_span_invalid_pair_without_region_pages_is_none() -> None:
+    assert normalize_page_span(["bad", "span"], [{"bbox": [1, 2, 3, 4]}]) is None
+
+
 # --- normalize_document_sections ---
 
 
