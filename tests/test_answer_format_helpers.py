@@ -241,6 +241,10 @@ def test_format_budget_int_thousands_separator() -> None:
     assert format_metadata_claim_value("budget", 0) == "0원"
 
 
+def test_format_budget_negative_int_keeps_sign_and_separator() -> None:
+    assert format_metadata_claim_value("budget", -1000000) == "-1,000,000원"
+
+
 def test_format_budget_integer_float_drops_decimals() -> None:
     """정수값 float(예: 1000.0)은 int 로 변환되어 소수점 없이 표시."""
     assert format_metadata_claim_value("budget", 1000.0) == "1,000원"
