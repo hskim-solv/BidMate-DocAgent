@@ -279,6 +279,23 @@ def test_make_citation_derives_page_span_from_regions_for_canonical_pdf() -> Non
     assert citation["citation_label"] == "원본 PDF pp.5-7"
 
 
+def test_make_citation_uses_regions_when_explicit_page_span_is_invalid() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "page_span": ["bad", "span"],
+        "regions": [
+            {"page_number": 9, "bbox": [0.1, 0.2, 0.3, 0.4]},
+            {"page_number": 8, "bbox": [0.5, 0.6, 0.7, 0.8]},
+        ],
+        "metadata": {"citation_basis": "source_pdf"},
+    })
+
+    assert citation["page_span"] == [8, 9]
+    assert citation["citation_label"] == "원본 PDF pp.8-9"
+
+
 def test_make_citation_omits_section_path_for_noncanonical_pdf() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
