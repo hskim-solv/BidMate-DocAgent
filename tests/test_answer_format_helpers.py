@@ -246,6 +246,26 @@ def test_make_citation_treats_non_dict_metadata_as_empty() -> None:
     }
 
 
+def test_make_citation_derives_page_span_from_regions_for_canonical_pdf() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "regions": [
+            {"page_number": 7, "bbox": [0.1, 0.2, 0.3, 0.4], "source": "ocr"},
+            {"page_number": 5, "type": "table", "block_id": 9},
+        ],
+        "metadata": {"citation_basis": "source_pdf"},
+    })
+
+    assert citation["regions"] == [
+        {"page_number": 7, "bbox": [0.1, 0.2, 0.3, 0.4], "source": "ocr"},
+        {"page_number": 5, "bbox": None, "type": "table", "block_id": "9"},
+    ]
+    assert citation["page_span"] == [5, 7]
+    assert citation["citation_label"] == "원본 PDF pp.5-7"
+
+
 def test_make_citation_omits_section_path_for_noncanonical_pdf() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
