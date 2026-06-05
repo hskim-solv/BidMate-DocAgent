@@ -77,6 +77,19 @@ class TestAnswerStatusReasonEnum(unittest.TestCase):
         )
         self.assertIn(result["code"], KNOWN_ANSWER_STATUS_REASON_CODES)
 
+    def test_partial_topic_grounding_reason_takes_precedence(self) -> None:
+        result = answer_status_reason(
+            status=ANSWER_STATUS_PARTIAL,
+            verified=True,
+            verification_reasons=[
+                "missing_requested_entity:행안부",
+                PARTIAL_TOPIC_GROUNDING_REASON,
+            ],
+        )
+        self.assertEqual(
+            result["code"], ANSWER_STATUS_REASON_PARTIAL_TOPIC_GROUNDING
+        )
+
     def test_partial_without_topic_grounding_yields_comparison_code(self) -> None:
         # The "other" partial path: comparison-coverage gaps, no
         # PARTIAL_TOPIC_GROUNDING_REASON in the reason list.
