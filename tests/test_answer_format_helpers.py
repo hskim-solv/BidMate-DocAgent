@@ -106,6 +106,12 @@ def test_make_citation_defaults_missing_doc_id_to_empty() -> None:
     assert citation["doc_id"] == ""
 
 
+def test_make_citation_defaults_missing_title_to_empty() -> None:
+    citation = make_citation({"doc_id": "rfp-001", "chunk_id": "chunk-7"})
+
+    assert citation["title"] == ""
+
+
 def test_make_citation_preserves_canonical_pdf_metadata_and_label() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
