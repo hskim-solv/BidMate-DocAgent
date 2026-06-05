@@ -142,6 +142,11 @@ def test_metadata_field_requested_matches_compacted_label_alias() -> None:
     assert metadata_field_requested("budget", 1000, {"topics": ["사업 금액"]}) is True
 
 
+def test_metadata_field_requested_matches_numeric_value() -> None:
+    # numeric metadata value 도 str(value) 기반 검색 대상으로 포함된다.
+    assert metadata_field_requested("budget", 1000, {"topics": ["1000"]}) is True
+
+
 def test_metadata_field_requested_matches_compacted_value() -> None:
     # value 쪽 공백도 compact 되어 topic '행정안전부' 와 매칭된다.
     assert metadata_field_requested("agency", "행정 안전부", {"topics": ["행정안전부"]}) is True
