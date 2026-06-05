@@ -138,6 +138,20 @@ def test_make_citation_coerces_canonical_pdf_text_span_hash_to_str() -> None:
     assert citation["citation_label"] == "원본 PDF p.3"
 
 
+def test_make_citation_omits_falsy_text_span_hash_for_canonical_pdf() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "page_span": [3, 3],
+        "text_span_hash": 0,
+        "metadata": {"citation_basis": "source_pdf"},
+    })
+
+    assert citation["citation_label"] == "원본 PDF p.3"
+    assert "text_span_hash" not in citation
+
+
 def test_make_citation_treats_citation_basis_as_canonical_pdf_path() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
