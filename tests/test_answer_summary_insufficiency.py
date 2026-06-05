@@ -75,6 +75,14 @@ def test_verification_reasons_comparison_dedupes() -> None:
     assert out == ["missing_requested_entity:행안부"]
 
 
+def test_verification_reasons_comparison_dedupes_duplicate_missing_entities() -> None:
+    out = answer_verification_reasons(
+        {"query_type": "comparison", "missing_requested_entities": ["행안부", "행안부"]},
+        [],
+    )
+    assert out == ["missing_requested_entity:행안부"]
+
+
 # --- answer_summary ---
 
 
