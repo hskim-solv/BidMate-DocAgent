@@ -136,6 +136,26 @@ class AnswerContractShapeTest(unittest.TestCase):
             },
         )
 
+    def test_shape_classifies_containers_recursively(self) -> None:
+        self.assertEqual(
+            _shape(
+                {
+                    "empty_items": [],
+                    "items": [{"status": "supported", "score": 1}],
+                    "metadata": {
+                        "flags": [True],
+                    },
+                }
+            ),
+            {
+                "empty_items": [],
+                "items": [{"status": "str", "score": "int"}],
+                "metadata": {
+                    "flags": ["bool"],
+                },
+            },
+        )
+
     def test_contract_subset_excludes_additive_observability_fields(self) -> None:
         subset = _extract_contract_subset({
             "answer": {
