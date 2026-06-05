@@ -255,6 +255,10 @@ def test_format_budget_decimal_float_keeps_two_decimals() -> None:
     assert format_metadata_claim_value("budget", 1234.56) == "1,234.56원"
 
 
+def test_format_budget_negative_decimal_float_keeps_two_decimals() -> None:
+    assert format_metadata_claim_value("budget", -1234.5) == "-1,234.50원"
+
+
 def test_format_budget_non_numeric_passthrough() -> None:
     """budget 이라도 비-숫자값은 str() passthrough (예: '비공개')."""
     assert format_metadata_claim_value("budget", "비공개") == "비공개"
