@@ -76,6 +76,12 @@ def test_render_claim_without_citation_omits_suffix() -> None:
     assert "[" not in out
 
 
+def test_render_claim_with_null_citations_omits_suffix() -> None:
+    out = render_answer_text({"summary": "S", "claims": [{"target": "A", "claim": "C", "citations": None}]})
+    assert out == "S\n- A: C"
+    assert "[" not in out
+
+
 def test_render_insufficiency_block() -> None:
     out = render_answer_text(
         {"summary": "S", "insufficiency": {"reasons": ["r1", "r2"], "missing_targets": ["교육부"]}}
