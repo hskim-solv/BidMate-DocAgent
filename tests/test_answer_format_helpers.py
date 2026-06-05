@@ -162,6 +162,25 @@ def test_make_citation_treats_non_dict_metadata_as_empty() -> None:
     }
 
 
+def test_make_citation_omits_section_path_for_noncanonical_pdf() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "section_path": ["root", 3],
+        "page_span": [2, 2],
+    })
+
+    assert citation == {
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "section": "",
+        "agency": "",
+        "page_span": [2, 2],
+    }
+
+
 # --- format_metadata_claim_value: budget 한국 통화 포맷 ---
 
 
