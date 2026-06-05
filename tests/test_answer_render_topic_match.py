@@ -48,6 +48,10 @@ def test_render_summary_strips_outer_whitespace() -> None:
     assert render_answer_text({"summary": "  요약문 \n"}) == "요약문"
 
 
+def test_render_whitespace_only_summary_is_empty_string() -> None:
+    assert render_answer_text({"summary": "  \n\t  "}) == ""
+
+
 def test_render_empty_summary_omits_blank_line() -> None:
     # summary 가 비면 빈 line 으로 필터되어 선행 빈 줄이 생기지 않는다
     # (빈 line 제외 필터가 없으면 '\n- A: C [c1]' 로 새어 KILL)
