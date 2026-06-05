@@ -89,6 +89,18 @@ def test_render_insufficiency_block() -> None:
     assert out == "S\n- 근거 부족: 사유: r1, r2; 확인 필요 대상: 교육부"
 
 
+def test_render_insufficiency_reasons_only() -> None:
+    out = render_answer_text({"summary": "S", "insufficiency": {"reasons": ["r1"]}})
+
+    assert out == "S\n- 근거 부족: 사유: r1"
+
+
+def test_render_insufficiency_missing_targets_only() -> None:
+    out = render_answer_text({"summary": "S", "insufficiency": {"missing_targets": ["교육부"]}})
+
+    assert out == "S\n- 근거 부족: 확인 필요 대상: 교육부"
+
+
 def test_render_insufficiency_empty_details_omitted() -> None:
     # insufficiency 가 있어도 reasons/missing_targets 가 모두 비면 '근거 부족' 줄 생략
     out = render_answer_text({"summary": "S", "insufficiency": {"reasons": [], "missing_targets": []}})
