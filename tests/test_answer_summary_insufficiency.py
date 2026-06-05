@@ -109,6 +109,19 @@ def test_build_insufficiency_missing_targets_is_unsupported_entities() -> None:
     assert out["checked_entities"] == ["행안부", "교육부"]
 
 
+def test_build_insufficiency_uses_context_entities_and_matched_doc_ids() -> None:
+    out = build_insufficiency(
+        "q",
+        {"context_entities": ["이전기관"], "matched_doc_ids": ["doc-1", "doc-2"]},
+        [],
+        True,
+        [],
+    )
+    assert out["missing_targets"] == ["이전기관"]
+    assert out["checked_entities"] == ["이전기관"]
+    assert out["checked_doc_ids"] == ["doc-1", "doc-2"]
+
+
 def test_build_insufficiency_not_verified_no_missing_falls_back_to_all_checked() -> None:
     # not verified 인데 missing_targets 가 비고 checked_entities 가 있으면 전체를 missing 으로
     out = build_insufficiency("q", {"entities": ["행안부"]}, [{"target": "행안부"}], False, [])
