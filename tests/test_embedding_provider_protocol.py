@@ -43,6 +43,17 @@ def test_embedding_dimension_mismatch_raises_explicit_error() -> None:
         ensure_embedding_dimension(result, 4)
 
 
+def test_embedding_dimension_validation_rejects_non_matrix_vectors() -> None:
+    result = EmbeddingResult(
+        vectors=np.zeros(4, dtype=np.float32),
+        backend="fake",
+        model="fake-model",
+    )
+
+    with pytest.raises(ValueError, match="expected 4, got None"):
+        ensure_embedding_dimension(result, 4)
+
+
 def test_embedding_dimension_match_returns_original_result() -> None:
     result = EmbeddingResult(
         vectors=np.zeros((1, 4), dtype=np.float32),
