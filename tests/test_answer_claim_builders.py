@@ -126,6 +126,13 @@ def test_build_comparison_claims_dedupes_shared_chunk() -> None:
     assert claims[0]["target"] == "행안부"
 
 
+def test_build_comparison_claims_dedupes_duplicate_entities() -> None:
+    ev = [_item("행안부", "c1")]
+    analysis = {"entities": ["행안부", "행안부"], "topics": [], "tokens": []}
+    claims = build_comparison_claims(analysis, ev)
+    assert [c["target"] for c in claims] == ["행안부"]
+
+
 def test_build_comparison_claims_skips_entity_without_evidence() -> None:
     # evidence 가 없는 entity 는 건너뛴다(빈 claim 생성 안 함)
     ev = [_item("행안부", "c1")]
