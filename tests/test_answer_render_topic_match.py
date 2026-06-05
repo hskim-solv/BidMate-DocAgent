@@ -27,6 +27,10 @@ from rag_answer import (
 # --- render_answer_text ---
 
 
+def test_render_empty_answer_is_empty_string() -> None:
+    assert render_answer_text({}) == ""
+
+
 def test_render_summary_only() -> None:
     assert render_answer_text({"summary": "요약문"}) == "요약문"
 
