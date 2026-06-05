@@ -346,9 +346,10 @@ def make_citation(item: dict[str, Any]) -> dict[str, Any]:
         metadata.get("text_source") == "pdf_pymupdf4llm"
         or bool(metadata.get("citation_basis"))
     )
+    chunk_id = item.get("chunk_id")
     citation = {
         "doc_id": item.get("doc_id", ""),
-        "chunk_id": item.get("chunk_id", ""),
+        "chunk_id": "" if chunk_id is None else str(chunk_id),
         "title": item.get("title", ""),
         "section": item.get("section", ""),
         "agency": item.get("agency", ""),
@@ -469,7 +470,7 @@ def render_answer_text(answer: dict[str, Any]) -> str:
     lines = ["" if summary is None else str(summary).strip()]
     for claim in answer.get("claims") or []:
         citations = claim.get("citations") or []
-        citation_ids = ", ".join(citation.get("chunk_id", "") for citation in citations if citation.get("chunk_id"))
+        citation_ids = ", ".join(str(citation.get("chunk_id", "")) for citation in citations if citation.get("chunk_id"))
         suffix = f" [{citation_ids}]" if citation_ids else ""
         lines.append(f"- {claim.get('target')}: {claim.get('claim')}{suffix}")
     insufficiency = answer.get("insufficiency")
