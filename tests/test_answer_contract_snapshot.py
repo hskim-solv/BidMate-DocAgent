@@ -116,6 +116,26 @@ class AnswerContractShapeTest(unittest.TestCase):
         cls.observed = _build_contract_shape()
         cls.golden = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
 
+    def test_shape_classifies_json_scalars_deterministically(self) -> None:
+        self.assertEqual(
+            _shape(
+                {
+                    "none": None,
+                    "truthy": True,
+                    "integer": 7,
+                    "decimal": 1.5,
+                    "text": "요약",
+                }
+            ),
+            {
+                "none": "null",
+                "truthy": "bool",
+                "integer": "int",
+                "decimal": "float",
+                "text": "str",
+            },
+        )
+
     def test_contract_subset_excludes_additive_observability_fields(self) -> None:
         subset = _extract_contract_subset({
             "answer": {
