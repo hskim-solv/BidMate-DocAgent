@@ -17,6 +17,15 @@ def test_load_raw_documents_skips_local_export_manifest(tmp_path):
     assert [doc["doc_id"] for doc in docs] == ["doc_001"]
 
 
+def test_load_raw_documents_skips_invalid_local_export_manifest_before_json_parse(tmp_path):
+    (tmp_path / "doc_001.md").write_text("# Doc 1\n\nBody\n", encoding="utf-8")
+    (tmp_path / "export_manifest.local.json").write_text("{not valid json", encoding="utf-8")
+
+    docs = load_raw_documents(tmp_path)
+
+    assert [doc["doc_id"] for doc in docs] == ["doc_001"]
+
+
 def test_load_raw_documents_skips_metadata_siblings_and_hidden_files(tmp_path):
     (tmp_path / ".hidden.md").write_text("# Hidden\n\nNot a corpus doc\n", encoding="utf-8")
     (tmp_path / "README.md").write_text("# Local corpus notes\n", encoding="utf-8")
