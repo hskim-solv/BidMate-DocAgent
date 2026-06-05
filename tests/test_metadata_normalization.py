@@ -84,6 +84,10 @@ def test_normalize_page_span_uses_explicit_pair() -> None:
     assert normalize_page_span([5, 9], []) == [5, 9]
 
 
+def test_normalize_page_span_coerces_explicit_string_pair() -> None:
+    assert normalize_page_span(["5", "9"], []) == [5, 9]
+
+
 def test_normalize_page_span_falls_back_to_region_min_max() -> None:
     regions = [{"page_number": 7}, {"page_number": 3}, {"page_number": 5}]
     assert normalize_page_span(None, regions) == [3, 7]
