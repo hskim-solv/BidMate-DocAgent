@@ -465,7 +465,8 @@ def build_insufficiency(
 
 
 def render_answer_text(answer: dict[str, Any]) -> str:
-    lines = [str(answer.get("summary") or "").strip()]
+    summary = answer.get("summary")
+    lines = ["" if summary is None else str(summary).strip()]
     for claim in answer.get("claims") or []:
         citations = claim.get("citations") or []
         citation_ids = ", ".join(citation.get("chunk_id", "") for citation in citations if citation.get("chunk_id"))

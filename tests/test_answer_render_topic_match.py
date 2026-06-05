@@ -39,6 +39,10 @@ def test_render_numeric_summary_as_string() -> None:
     assert render_answer_text({"summary": 2026}) == "2026"
 
 
+def test_render_zero_summary_as_string() -> None:
+    assert render_answer_text({"summary": 0}) == "0"
+
+
 def test_render_summary_only() -> None:
     assert render_answer_text({"summary": "요약문"}) == "요약문"
 
