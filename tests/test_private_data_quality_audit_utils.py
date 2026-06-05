@@ -28,6 +28,12 @@ def test_percentile_interpolates_and_handles_empty_input():
     assert utils.percentile([10, 20, 30, 40], 0.5) == pytest.approx(25.0)
 
 
+def test_page_metadata_present_uses_metadata_and_region_fields():
+    assert utils.page_metadata_present({"page": "", "metadata": {"page_span": [2, 3]}})
+    assert utils.page_metadata_present({"regions": [{"page_number": ""}, {"page_number": 4}]})
+    assert not utils.page_metadata_present({"page": "", "metadata": {"pages": []}, "regions": []})
+
+
 def test_public_safety_flags_forbidden_keys_and_absolute_paths():
     hits = utils.forbidden_output_hits(
         {"safe": [{"doc_id": "PRIVATE-DOC"}], "note": "/Users/hskim/private/file.hwp"}
