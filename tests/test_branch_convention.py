@@ -82,6 +82,16 @@ def test_parse_branch_returns_issue_number(name, expected):
 
 
 @pytest.mark.parametrize("name", [
+    "revert-123-old-branch",
+    "dependabot/pip/requests-2.31.0",
+    "renovate/python-3.x",
+    "pre-commit-ci/update-config",
+])
+def test_parse_branch_returns_none_for_exempt_bot_branches(name):
+    assert cbi.parse_branch(name) is None
+
+
+@pytest.mark.parametrize("name", [
     "claude/issue-1-foo",
     "main",
     "feat/no-issue",
