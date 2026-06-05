@@ -21,6 +21,14 @@ def test_approved_private_egress_profile_allows_when_surface_unset(monkeypatch: 
     assert boundary.external_egress_allowed()
 
 
+def test_redacted_external_profile_still_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(boundary.DATA_SURFACE_ENV, raising=False)
+    monkeypatch.setenv(boundary.EGRESS_PROFILE_ENV, "redacted_external_api")
+
+    assert boundary.resolve_egress_profile() == "redacted_external_api"
+    assert not boundary.external_egress_allowed()
+
+
 def test_unattested_external_payload_fails_closed_with_channel(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(boundary.DATA_SURFACE_ENV, "private_local")
     monkeypatch.setenv(boundary.EGRESS_PROFILE_ENV, "connected_no_egress")
