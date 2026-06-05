@@ -46,6 +46,16 @@ def test_best_sentence_topic_hit_is_case_insensitive() -> None:
     assert out == "Budget detail with additional context."
 
 
+def test_best_sentence_counts_multiple_topic_hits() -> None:
+    # topic hit 2개(2×3=6)가 token hit 5개를 이겨야 한다. topic 을 1개로 cap 하면 token 문장이 이김.
+    out = best_sentence(
+        "Budget schedule detail with additional context. contract review analysis evaluation item.",
+        ["budget", "schedule"],
+        ["contract", "review", "analysis", "evaluation", "item"],
+    )
+    assert out == "Budget schedule detail with additional context."
+
+
 def test_best_sentence_token_only_selection() -> None:
     # topic 없이 query token 매칭만으로 선택
     assert best_sentence("계약 내용. 예산 집행.", [], ["예산"]) == "예산 집행."
