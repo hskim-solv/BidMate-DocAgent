@@ -168,6 +168,19 @@ def test_make_citation_treats_citation_basis_as_canonical_pdf_path() -> None:
     assert "text_source" not in citation
 
 
+def test_make_citation_normalizes_string_page_span_for_canonical_pdf() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "page_span": ["2", "4"],
+        "metadata": {"citation_basis": "source_pdf"},
+    })
+
+    assert citation["page_span"] == [2, 4]
+    assert citation["citation_label"] == "원본 PDF pp.2-4"
+
+
 def test_make_citation_omits_empty_section_path_for_canonical_pdf() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
