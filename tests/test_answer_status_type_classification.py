@@ -50,6 +50,12 @@ def test_answer_status_insufficient_when_missing_requested_entity() -> None:
     assert out == ANSWER_STATUS_INSUFFICIENT
 
 
+def test_answer_status_missing_requested_reason_requires_prefix() -> None:
+    # reason 내부에 문자열이 들어있어도 prefix 가 아니면 supported 를 막지 않는다.
+    out = answer_status({}, _CLAIMS, True, ["not_missing_requested_entity:행안부"])
+    assert out == ANSWER_STATUS_SUPPORTED
+
+
 # --- answer_status: comparison partial 경로 ---
 
 
