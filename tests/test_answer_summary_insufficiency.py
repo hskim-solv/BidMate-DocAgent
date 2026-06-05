@@ -54,6 +54,18 @@ def test_verification_reasons_comparison_appends_missing() -> None:
     assert out == ["r1", "missing_requested_entity:행안부"]
 
 
+def test_verification_reasons_comparison_appends_multiple_missing_in_order() -> None:
+    out = answer_verification_reasons(
+        {"query_type": "comparison", "missing_requested_entities": ["행안부", "교육부"]},
+        ["r1"],
+    )
+    assert out == [
+        "r1",
+        "missing_requested_entity:행안부",
+        "missing_requested_entity:교육부",
+    ]
+
+
 def test_verification_reasons_comparison_dedupes() -> None:
     # 이미 같은 reason 이 있으면 중복 추가하지 않는다
     out = answer_verification_reasons(
