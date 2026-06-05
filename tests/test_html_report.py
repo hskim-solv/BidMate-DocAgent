@@ -28,6 +28,14 @@ def test_status_card_escapes_fields_and_preserves_known_tone() -> None:
     assert "&#x27;quoted&#x27;" in html
 
 
+def test_status_card_omits_empty_detail_element() -> None:
+    html = render_status_card("Total", "0", detail="")
+
+    assert "<small>" not in html
+    assert "</small>" not in html
+    assert "<strong>0</strong></article>" in html
+
+
 def test_table_escapes_headers_rows_and_empty_message() -> None:
     empty = render_table(["A&B", "C"], [], empty_message="<none>")
     rows = render_table(["A"], [["<cell>"]])
