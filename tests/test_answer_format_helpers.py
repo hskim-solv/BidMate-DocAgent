@@ -88,6 +88,12 @@ def test_make_citation_coerces_numeric_chunk_id_to_str() -> None:
     assert citation["chunk_id"] == "7"
 
 
+def test_make_citation_keeps_null_chunk_id_empty() -> None:
+    citation = make_citation({"doc_id": "rfp-001", "chunk_id": None})
+
+    assert citation["chunk_id"] == ""
+
+
 def test_make_citation_preserves_canonical_pdf_metadata_and_label() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
