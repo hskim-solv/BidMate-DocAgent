@@ -255,6 +255,10 @@ def test_format_budget_decimal_float_keeps_two_decimals() -> None:
     assert format_metadata_claim_value("budget", 1234.56) == "1,234.56원"
 
 
+def test_format_budget_decimal_float_rounds_to_two_decimals() -> None:
+    assert format_metadata_claim_value("budget", 1234.567) == "1,234.57원"
+
+
 def test_format_budget_negative_decimal_float_keeps_two_decimals() -> None:
     assert format_metadata_claim_value("budget", -1234.5) == "-1,234.50원"
 
