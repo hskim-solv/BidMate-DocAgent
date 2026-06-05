@@ -107,6 +107,26 @@ def test_metadata_claims_zero_value_is_rendered() -> None:
     assert out == ["사업예산: 0원"]
 
 
+def test_metadata_claims_multiple_fields_follow_contract_order() -> None:
+    out = metadata_claim_sentences(
+        {
+            "metadata": {
+                "summary": "전자입찰",
+                "bid_deadline_at": "2026-06-10",
+                "budget": 1000000,
+                "ignored_field": "무시",
+            }
+        },
+        {"topics": ["사업요약", "마감일", "예산"]},
+    )
+
+    assert out == [
+        "사업예산: 1,000,000원",
+        "입찰 마감일: 2026-06-10",
+        "사업 요약: 전자입찰",
+    ]
+
+
 def test_metadata_claims_unrequested_field_filtered_out() -> None:
     # 같은 값이라도 topic 이 매칭 안 되면 metadata_field_requested 필터로 제외 → []
     out = metadata_claim_sentences({"metadata": {"budget": 1000000}}, {"topics": ["일정"]})
