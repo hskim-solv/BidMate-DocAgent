@@ -40,6 +40,12 @@ def test_best_sentence_topic_weight_is_strictly_three() -> None:
     assert out == "예산 관련 항목 상세 검토."
 
 
+def test_best_sentence_topic_hit_is_case_insensitive() -> None:
+    # case-sensitive 로 회귀하면 두 문장 score=0 동점이 되어 더 짧은 fallback 문장이 이긴다.
+    out = best_sentence("Budget detail with additional context. x.", ["budget"], [])
+    assert out == "Budget detail with additional context."
+
+
 def test_best_sentence_token_only_selection() -> None:
     # topic 없이 query token 매칭만으로 선택
     assert best_sentence("계약 내용. 예산 집행.", [], ["예산"]) == "예산 집행."
