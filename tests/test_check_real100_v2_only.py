@@ -33,6 +33,8 @@ make real-eval-v2-check
 
 def test_ban_context_and_stale_command_detection_are_separate():
     assert guard._is_ban_context("legacy reports/real100 is banned") is True
+    assert guard._is_ban_context("reports/real100 사용하지 말고 real100_v2를 사용") is True
+    assert guard._is_ban_context("legacy real100 집계는 금지") is True
     assert guard._is_ban_context("Use reports/real100 for a new claim") is False
     assert guard.STALE_COMMAND_RE.match("make real-eval")
     assert guard.STALE_COMMAND_RE.match("REAL_EVAL_ROOT=/x make real-eval --foo")
