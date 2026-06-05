@@ -86,6 +86,24 @@ def test_render_claim_filters_blank_citation_ids() -> None:
     assert render_answer_text(answer) == "요약\n- 행안부: 예산 1조 [c1]"
 
 
+def test_render_claim_filters_falsy_citation_ids() -> None:
+    answer = {
+        "summary": "요약",
+        "claims": [
+            {
+                "target": "행안부",
+                "claim": "예산 1조",
+                "citations": [
+                    {"chunk_id": 0},
+                    {"chunk_id": None},
+                    {"chunk_id": "c1"},
+                ],
+            }
+        ],
+    }
+    assert render_answer_text(answer) == "요약\n- 행안부: 예산 1조 [c1]"
+
+
 def test_render_claim_without_citation_omits_suffix() -> None:
     # citation 이 비면 ' [..]' suffix 를 붙이지 않는다
     out = render_answer_text({"summary": "S", "claims": [{"target": "A", "claim": "C", "citations": []}]})
