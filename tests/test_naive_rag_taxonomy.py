@@ -34,6 +34,20 @@ def test_classify_failure_labels_failed_abstention_for_unanswerable_case() -> No
     assert labels == ["answer_failure.failed_to_abstain"]
 
 
+def test_classify_failure_labels_partial_multi_chunk_retrieval() -> None:
+    primary, labels = classify_failure(
+        question={"answerable": True},
+        gold_chunk_ids=["gold-1", "gold-2"],
+        retrieved_chunk_ids=["gold-1"],
+        cited_chunk_ids=["gold-1"],
+        retrieval_metrics={"recall_at_10": 0.5, "recall_at_5": 0.5},
+        answer_metrics={"citation_accuracy": 1.0, "answer_relevancy": 1.0},
+    )
+
+    assert primary == "retrieval_failure.multi_chunk_evidence_missing"
+    assert labels == ["retrieval_failure.multi_chunk_evidence_missing"]
+
+
 def test_count_failures_ignores_unknown_and_none_labels() -> None:
     counts = count_failures([
         "retrieval_failure.query_wording_mismatch",
