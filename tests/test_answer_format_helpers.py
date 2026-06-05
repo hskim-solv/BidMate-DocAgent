@@ -124,6 +124,17 @@ def test_make_citation_defaults_missing_agency_to_empty() -> None:
     assert citation["agency"] == ""
 
 
+def test_make_citation_omits_missing_page_span_and_label() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "metadata": {"citation_basis": "source_pdf"},
+    })
+
+    assert "page_span" not in citation
+    assert "citation_label" not in citation
+
+
 def test_make_citation_preserves_canonical_pdf_metadata_and_label() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
