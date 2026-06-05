@@ -142,6 +142,11 @@ def test_metadata_field_requested_matches_compacted_value() -> None:
     assert metadata_field_requested("agency", "행정 안전부", {"topics": ["행정안전부"]}) is True
 
 
+def test_metadata_field_requested_matches_compacted_topic() -> None:
+    # topic 쪽 공백도 compact 되어 metadata value '행정안전부' 와 매칭된다.
+    assert metadata_field_requested("agency", "행정안전부", {"topics": ["행정 안전부"]}) is True
+
+
 def test_metadata_field_requested_no_match_is_false() -> None:
     # topic '예산' 이 agency label/value 에 없으면 False
     assert metadata_field_requested("agency", "행안부", {"topics": ["예산"]}) is False
