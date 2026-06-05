@@ -96,6 +96,10 @@ def test_answer_query_type_insufficient_status_wins() -> None:
         answer_query_type({"query_type": "comparison"}, ANSWER_STATUS_INSUFFICIENT)
         == "abstention"
     )
+    assert (
+        answer_query_type({"query_type": "follow_up"}, ANSWER_STATUS_INSUFFICIENT)
+        == "abstention"
+    )
 
 
 def test_answer_query_type_maps_known_types() -> None:
