@@ -117,6 +117,25 @@ def test_make_citation_preserves_canonical_pdf_metadata_and_label() -> None:
     }
 
 
+def test_make_citation_omits_empty_section_path_for_canonical_pdf() -> None:
+    citation = make_citation({
+        "doc_id": "rfp-001",
+        "chunk_id": "chunk-7",
+        "title": "공고문",
+        "section_path": [],
+        "page_span": [5, 5],
+        "metadata": {
+            "text_source": "pdf_pymupdf4llm",
+            "citation_basis": "source_pdf",
+        },
+    })
+
+    assert citation["text_source"] == "pdf_pymupdf4llm"
+    assert citation["citation_basis"] == "source_pdf"
+    assert citation["citation_label"] == "원본 PDF p.5"
+    assert "section_path" not in citation
+
+
 def test_make_citation_omits_empty_canonical_pdf_metadata() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
