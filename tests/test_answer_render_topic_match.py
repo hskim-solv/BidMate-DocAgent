@@ -35,6 +35,10 @@ def test_render_null_claims_keeps_summary_only() -> None:
     assert render_answer_text({"summary": "요약문", "claims": None}) == "요약문"
 
 
+def test_render_empty_claims_keeps_summary_only() -> None:
+    assert render_answer_text({"summary": "요약문", "claims": []}) == "요약문"
+
+
 def test_render_summary_strips_outer_whitespace() -> None:
     # summary 는 strip 된 뒤 빈 줄 필터를 거쳐 출력된다.
     assert render_answer_text({"summary": "  요약문 \n"}) == "요약문"
