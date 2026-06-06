@@ -83,6 +83,12 @@ def test_normalize_regions_rejects_boolean_page_number() -> None:
     assert "page_number" not in out[0]
 
 
+def test_normalize_regions_rejects_false_page_number() -> None:
+    out = normalize_regions([{"page_number": False}])
+    assert out == [{"bbox": None}]
+    assert "page_number" not in out[0]
+
+
 def test_normalize_regions_coerces_numeric_string_page_number() -> None:
     out = normalize_regions([{"page_number": "3"}])
     assert out == [{"page_number": 3, "bbox": None}]
@@ -105,6 +111,10 @@ def test_normalize_page_span_sorts_explicit_pair() -> None:
 
 def test_normalize_page_span_rejects_boolean_explicit_pair() -> None:
     assert normalize_page_span([True, 3], []) is None
+
+
+def test_normalize_page_span_rejects_false_explicit_pair() -> None:
+    assert normalize_page_span([False, 3], []) is None
 
 
 def test_normalize_page_span_falls_back_to_region_min_max() -> None:
