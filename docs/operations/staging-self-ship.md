@@ -1,10 +1,12 @@
-# Staging self-ship lane — 운영자 runbook (P2.0 D-minus, ADR 0088 + ADR 0090)
+# Staging self-ship lane — 운영자 runbook (P2.0 D-minus + self-ship v1 primitives)
 
-`make 시작-ship`은 byte-identical `make 시작` 루프(`EXECUTE_SHIP=0`, 불변)에 격리된
-`scripts/_staging_ship.py` 모듈을 post step으로 결합한 **opt-in** lane이다. 장기
+`make 시작-ship`은 일반 `make 시작`의 legacy ship-run은 계속 끄고(`EXECUTE_SHIP=0`),
+opt-in manifest emission seam과 격리된 `scripts/_staging_ship.py` post step을 결합한
+**opt-in** lane이다. 장기
 목표는 자율 루프가 자기 작업을 장수(long-lived) `autopilot/integration` 브랜치로
-직접 머지하게 하는 것이다. **P2.0 D-minus 시점에서 이 lane은 강제(enforcement)
-전제조건을 검증하고 머지를 거부한다 — 자율 머지는 P2.2다.**
+직접 머지하게 하는 것이다. 기본 `make 시작-ship` 경로는 여전히 강제(enforcement)
+전제조건을 검증하고 머지를 거부한다. 실제 staging merge는 manifest `source_sha`와
+`BIDMATE_SHIP_MERGE_TOKEN`이 있는 명시적 `--execute-live-staging`에서만 가능하다.
 
 **P2.0 D-minus 변경 (ADR 0090):** 이 PR은 강제 모델을 실제로 작동하게 만든다:
 
@@ -22,15 +24,42 @@
 - `_staging_ship.py`는 **manifest CONTRACT 함수**(`write_ship_manifest` /
   `read_ship_manifest` / `archive_ship_manifest`, 단위 테스트됨)를 정의한다. `main()`은
   manifest가 **있으면** 읽고(idempotent — 소비하지 않음), 수동 실행을 위해 `--source`를
-  받는다. **이 PR에서 `agent_loop.py`는 manifest를 자동 emit하지 않는다** — 루프가
-  `EXECUTE_SHIP=0`으로 돌아 아무 변경도 커밋되지 않으므로 `source_sha=HEAD`는
-  stale / 무의미하다. Manifest emission은 HEAD-binding이 실제가 되는 P2.2로 연기됐다.
-- `_staging_ship.py main()`은 **검증-후-거부(verify-and-refuse) pre-flight harness**다:
-  manifest를 읽고(있으면), constitutional 가드 + 실시간 protection 체크를 실행한 뒤
-  **항상 rc 2 (blocked-on-user)를 반환**한다. `open_pr`/`merge`는 호출 시 raise하는
-  명시적 P2.2-연기 stub이다.
+  받는다. `agent_loop.py active-auto-loop --emit-ship-manifest`는 정확히 한 개의
+  `local-gate-complete` cycle, serial task pool, issue-linked source branch, full HEAD SHA,
+  그리고 non-report dirty file 0개일 때만 schema v2 manifest를 쓴다.
+- `_staging_ship.py main()`은 **검증 우선 harness**다. 기본 모드는 manifest를
+  읽고(있으면), constitutional 가드 + 실시간 protection 체크를 실행한 뒤 rc 2
+  (blocked-on-user)를 반환한다. `--execute-live-staging`을 명시하면 staging PR
+  create/check/merge를 실행하되, `--match-head-commit <source_sha>`를 강제하고
+  `--admin` / `--delete-branch`는 사용하지 않는다.
 
 이 lane이 항상 머지를 거부하는 것은 **올바른 D-minus 동작**이다 — 버그가 아니다.
+
+**Self-ship v1 primitive (2026-06-05):** staging GitHub PR 생성/merge wiring은
+명시 플래그 뒤에 구현됐다. main promotion은 여전히 simulation/contract 단계이며
+live merge는 deferred다. 다만 main review gate의 GitHub GraphQL 필드 판정
+(`reviewDecision` + `reviewThreads.nodes[].isResolved/isOutdated`)은 read-only resolver로
+구현됐다.
+
+- `ship_manifest.json` schema v2가 유일한 v1 계약이다. schema v1 + sidecar/supplemental
+  manifest는 거부된다.
+- manifest는 `target`, `base_branch`, `gate_evidence_path`,
+  `gate_evidence_digest`, `protected_paths_changed`, `ci_evidence_ref`,
+  `review_gate_ref`를 포함한다. CI/review ref는 포인터일 뿐이며 merge 권한이 아니다.
+- manifest emission seam은 merge가 아니다. loop는 `ship_manifest.json`만 작성하고,
+  staging PR 생성/체크/머지는 `_staging_ship.py --execute-live-staging`의 별도 명시
+  플래그와 merge token 경로가 담당한다.
+- main promotion simulation은 promoter-resolved facts만 사용한다:
+  CI green, `reviewDecision == APPROVED`, unresolved non-outdated thread 0,
+  branch protection, non-admin token, PR head SHA binding.
+- review gate resolver는 `gh api graphql`로 PR의 `reviewDecision`과 review thread 페이지를
+  읽고, `isResolved=false && isOutdated=false`인 thread 수를 센다. API/스키마/페이지 한도
+  실패는 모두 `api_error=True`로 fail-closed 처리된다.
+- guard/ship/protection path 변경은 external ack가 없으면 `main-blocked-guard-ack`다.
+  runner/bot/merge-token/agent-authored evidence는 ack가 될 수 없다.
+- cap store v1 전에는 main promotion이 finite bounded invocation에서만 허용된다.
+  infinite/retry/multiple-main-manifest/multiple-source-SHA mode는
+  `main-blocked-cap-deferred`다.
 
 ## 강제 모델 (enforcement model — 먼저 읽을 것)
 
@@ -41,8 +70,9 @@ workspace-write runner는 이를 우회할 수 있다. **권한(authority)**은 
 
 1. `autopilot/integration`에 대한 GitHub **branch protection** — `staging-self-ship-guard`
    워크플로를 **required status check**로 지정.
-2. (P2.2) branch protection을 우회할 수 없는 **권한 분리된 merge 토큰**
-   (`BIDMATE_SHIP_MERGE_TOKEN`) — **runner write 도메인 밖**에 저장.
+2. branch protection을 우회할 수 없는 **권한 분리된 merge 토큰**
+   (`BIDMATE_SHIP_MERGE_TOKEN`) — **runner write 도메인 밖**에 저장하고,
+   explicit live staging mutation에만 주입.
 
 `protection_verified`는 `repos/:owner/:repo/branches/autopilot%2Fintegration/protection`에
 대해 **실시간 `gh api` 쿼리**를 수행한다. `staging-self-ship-guard` required check가
@@ -115,45 +145,63 @@ gh api -X PUT repos/:owner/:repo/branches/autopilot%2Fintegration/protection \
   -F 'allow_deletions=false'
 ```
 
-### 2. P2.2: 권한 분리된 merge 토큰과 cap store (연기됨)
+### 2. 권한 분리된 merge 토큰과 cap store
 
-이들은 **D-minus에 불필요**하며 P2.2로 연기됨:
+staging live merge에는 merge token이 필요하다. durable cap store와 main live promotion은
+후속 단계다.
 
 - `BIDMATE_SHIP_MERGE_TOKEN` — 이 repo로 스코프된 fine-grained PAT (또는 GitHub App
   installation 토큰), **Contents: read/write + Pull requests: read/write** 권한은 갖되
-  Administration은 **갖지 않음**. branch protection을 편집할 수 없어야 한다.
-- `BIDMATE_SHIP_CAP_STORE` — cross-worktree 일일 cap 트랜잭션성을 위한 T4
+  Administration은 **갖지 않음**. branch protection을 편집할 수 없어야 한다. live
+  staging mutation subprocess는 ambient `GH_TOKEN`을 버리고 이 값을 `GH_TOKEN`으로만
+  주입한다.
+- `BIDMATE_SHIP_CAP_STORE` — main promotion의 cross-worktree 일일 cap 트랜잭션성을 위한 T4
   self-immutable cap store 파일 경로 (runner write 도메인 밖).
 
-## Ship manifest 흐름 (P2.0 D-minus)
+## Ship manifest 흐름 (schema v2)
 
-`make 시작-ship`은 byte-identical `make 시작` 루프를 실행하고(`env -u`로 시크릿 제거,
-kill-switch 사전 점검), 그 다음 `_staging_ship.py`를 post step으로 호출한다.
+`make 시작-ship`은 루프 sub-make 전에 시크릿을 제거하고 kill-switch를 사전 점검한 뒤,
+`ACTIVE_AUTO_LOOP_EMIT_SHIP_MANIFEST=1`로 `make 시작`을 실행한다. 일반 `make 시작`은
+여전히 manifest를 쓰지 않는다. emission seam은 아래 조건을 모두 만족할 때만
+`$(ACTIVE_SHIP_STATE_DIR)/ship_manifest.json`을 작성한다:
 
-**이 PR에는 manifest 자동 emission이 없다.** `agent_loop.py`는 `ship_manifest.json`을
-쓰지 않는다 — 루프가 `EXECUTE_SHIP=0`으로 돌아 게이팅된 변경이 절대 커밋되지 않으므로
-`source_sha=HEAD`는 stale하다. manifest emission seam(`_maybe_write_ship_manifest`)은
-실제 커밋이 존재하고 HEAD-binding이 유의미한 P2.2로 연기됐다.
+- `EXECUTE_SHIP=0` — legacy `make ship-run`과 동시 사용 금지.
+- serial task pool (`task_pool=1`) — 한 manifest가 여러 병렬 cycle의 gate evidence를
+  대표하지 않도록 한다.
+- 정확히 한 개의 cycle이 `local-gate-complete`.
+- source branch가 issue-linked feature branch.
+- `source_sha`가 full 40-char HEAD SHA.
+- non-report dirty file 0개 — `reports/agent_loop/**` 생성물은 허용하지만 코드/문서의
+  uncommitted edit은 manifest를 쓰지 않는다.
 
 manifest **contract 함수**는 `_staging_ship.py`에 정의·단위 테스트됨:
 - `write_ship_manifest(state_dir, ...)` — `<state-dir>/ship_manifest.json` 작성
+  (`schema_version=2`, `source_branch`, `source_sha`, `target`, `base_branch`,
+  `title`, `body`, `day`, `gate_evidence_path`, `gate_evidence_digest`,
+  `protected_paths_changed`, `ci_evidence_ref`, `review_gate_ref`)
 - `read_ship_manifest(state_dir)` — **idempotent 읽기** (소비/아카이브하지 않음)
-- `archive_ship_manifest(state_dir)` — `.consumed`로 이동 (P2.2 merge 성공 경로에서
-  호출)
+- `archive_ship_manifest(state_dir)` — `.consumed`로 이동 (successful live staging /
+  main promotion 경로에서 호출)
 
 `_staging_ship.py main()`은 manifest가 **이미 있으면** 읽고(idempotent), 운영자가
 `--source`를 제공하면 그것을 사용한 뒤, constitutional 가드 + 실시간 protection 체크를
-실행하고 rc 2로 종료한다.
+실행한다. 기본 모드는 rc 2로 종료한다. live staging은 아래 명시 플래그가 필요하다.
 
 ```bash
-# manifest 경로 (contract, P2.2 emission seam이 작성; 테스트용으로 운영자가 배치):
+# manifest 경로 (contract; 시작-ship opt-in seam이 조건 충족 시 작성):
 # $(ACTIVE_SHIP_STATE_DIR)/ship_manifest.json
 
 # 오늘 실시간 protection-verify harness를 수동 실행하려면:
 python scripts/_staging_ship.py --source <branch> --state-dir reports/agent_loop/active
+
+# staging live merge를 명시 실행하려면 (기본 make target은 이 flag를 넘기지 않음):
+BIDMATE_SHIP_MERGE_TOKEN=... python scripts/_staging_ship.py \
+  --manifest-dir reports/agent_loop/active \
+  --state-dir reports/agent_loop/active \
+  --execute-live-staging
 ```
 
-## Gate 3 — 실시간 e2e (D-minus: 외부 강제 검증; P2.2: merge 검증)
+## Gate 3 — 실시간 e2e (외부 강제 + explicit staging merge 검증)
 
 운영자 branch-protection 설정 후, 이 두 adversarial 체크가 외부 권한이 실제임을
 증명한다. mock할 수 없다 — 실제 GitHub 서버 상태를 동작시킨다.
@@ -162,7 +210,7 @@ python scripts/_staging_ship.py --source <branch> --state-dir reports/agent_loop
    리뷰 *없이* `scripts/_staging_ship.py`를 편집하는 PR을 `autopilot/integration`으로
    연다. 예상: `staging-self-ship-guard` required check가 **실패**하고 머지가 차단된다
    (아래 "Constitutional-change 강제" 참조 — ADR 0091).
-2. **merge 토큰은 protection을 비활성화할 수 없다.** (P2.2, 토큰 프로비저닝 후)
+2. **merge 토큰은 protection을 비활성화할 수 없다.**
    ```bash
    GH_TOKEN=$BIDMATE_SHIP_MERGE_TOKEN gh api -X PATCH \
      repos/:owner/:repo/branches/autopilot%2Fintegration/protection \
@@ -170,8 +218,8 @@ python scripts/_staging_ship.py --source <branch> --state-dir reports/agent_loop
    ```
    예상: **HTTP 403**.
 
-Gate 3 check 1은 protection이 실제임을 검증한다. Check 2는 P2.2로 연기됨 (권한 분리
-토큰이 존재해야 함).
+Gate 3 check 1은 protection이 실제임을 검증한다. Check 2는 권한 분리 토큰이
+프로비저닝된 뒤 실행한다.
 
 ## lane 실행
 
@@ -195,28 +243,29 @@ export BIDMATE_SHIP_KILL_SWITCH=1      # env 형태
 fail-close한다 — 두 ship 권한은 상호 배타적이다 (ADR 0088 §7).
 
 이 lane은 `protection_verified`가 실시간 `gh api` 쿼리를 통과할 때까지 머지를 거부한다.
-이는 올바른 동작이다 — 버그가 아니다. 자율 머지는 merge 토큰, cap store, 직렬화된
-promotion 로직이 구현되는 P2.2에서 풀린다.
+이는 올바른 동작이다 — 버그가 아니다. 기본 `make 시작-ship`도 계속 검증-후-거부이며,
+staging live merge는 manifest와 `--execute-live-staging`을 명시해야 한다.
 
-## P2.0 D-minus가 구축한 것 vs blocked-on-user / 연기
+## 현재 구축된 것 vs blocked-on-user / 연기
 
-| 구축됨 (P2.0 D-minus) | Blocked-on-user (당신) | P2.2로 연기 |
+| 구축됨 | Blocked-on-user (당신) | 후속으로 연기 |
 |---|---|---|
-| `ship_manifest.json` **contract 함수** (`_staging_ship.py`의 `write_ship_manifest` / `read_ship_manifest` / `archive_ship_manifest`, 단위 테스트됨) | `autopilot/integration` 생성 + `staging-self-ship-guard` required check를 가진 branch protection | **`agent_loop.py` manifest emission seam** (`_maybe_write_ship_manifest`) — `EXECUTE_SHIP=0`이 `source_sha=HEAD`를 stale하게 만들어 연기 |
-| 실시간 `protection_verified` — `staging-self-ship-guard` required check + `allow_force_pushes=false` + `enforce_admins=true`를 확인하는 실제 `gh api` 쿼리, URL 인코딩된 슬래시 브랜치, fail-closed; env-trust 플래그 제거 | Gate-3 실시간 e2e check 1 (가드 파일 PR → required check 실패) | 실시간 `gh pr create` / `gh pr merge` (open_pr/merge는 P2.2-연기 stub) |
-| `BIDMATE_SHIP_*` env 격리 — 단일 출처 `scripts/_ship_env.py`, 모든 6개 runner 서브프로세스 lane에 deny-by-prefix; `make 시작-ship`은 루프 sub-make 전에 시크릿 제거 | ADR 0090 Status `proposed → accepted` | 권한 분리 merge 토큰(`BIDMATE_SHIP_MERGE_TOKEN`) + `merge()`의 ambient-credential 제거 |
-| `main()` 검증-후-거부 pre-flight harness — manifest 있으면 읽고(idempotent), `--source` 수용; 항상 rc 2 | | T4 self-immutable cap store(`BIDMATE_SHIP_CAP_STORE`) + cross-worktree 공유 lock + 일일 cap 트랜잭션성 |
-| ADR 0090 + 이 갱신된 runbook | | `source_sha` → PR head binding(`--match-head-commit`) + 직렬화된 promotion |
+| `ship_manifest.json` **schema v2 contract 함수** + `agent_loop.py` opt-in manifest emission seam (`--emit-ship-manifest`, 단위 테스트됨) | `autopilot/integration` 생성 + `staging-self-ship-guard` required check를 가진 branch protection | main live promotion wiring |
+| 실시간 `protection_verified` — `staging-self-ship-guard` required check + `allow_force_pushes=false` + `enforce_admins=true`를 확인하는 실제 `gh api` 쿼리, URL 인코딩된 슬래시 브랜치, fail-closed; env-trust 플래그 제거 | Gate-3 실시간 e2e check 1 (가드 파일 PR → required check 실패) | main live promotion wiring |
+| `BIDMATE_SHIP_*` env 격리 — 단일 출처 `scripts/_ship_env.py`, 모든 6개 runner 서브프로세스 lane에 deny-by-prefix; `make 시작-ship`은 루프 sub-make 전에 시크릿 제거 | ADR 0090 Status `proposed → accepted` | durable cap store(`BIDMATE_SHIP_CAP_STORE`) + cross-worktree 공유 lock + 일일 cap 트랜잭션성 |
+| `main()` 기본 검증-후-거부 + 명시 `--execute-live-staging` staging PR create/check/merge; `--match-head-commit` 강제; `--admin`/`--delete-branch` 금지 | 권한 분리 `BIDMATE_SHIP_MERGE_TOKEN` provisioning | main promotion의 source_sha live binding |
+| protected-path detector, external ack validator, review gate matrix, read-only GitHub GraphQL review-thread resolver, main gate simulation, no-cap bounded-mode blocker, promotion lock primitive | main live promotion evidence source/policy 확정 | main live promotion wiring |
+| ADR 0090 + 이 갱신된 runbook | | main promotion의 source_sha live binding |
 | | | Bounded check poll(`BIDMATE_SHIP_CHECK_ATTEMPTS`/`BIDMATE_SHIP_CHECK_INTERVAL_SECONDS`) |
 | | | Gate-3 실시간 e2e check 2 (merge 토큰 PUT protection → 403) |
 | | | P2.1: `_ship_env.py` + manifest emission seam을 `SELF_IMMUTABLE_PATHS`에 추가 |
 
 ## 범위 경계 (scope boundary)
 
-**P2.0 D-minus**는 강제 모델 + manifest contract 정의 레이어다. 루프 manifest emission
-seam과 자율 머지 오케스트레이션은 P2.2다. 그 이상의 능력(무제한 self-modify / option 3,
-main 자동 promotion, task 자동 생성)은 P2.1–P3이며 각각 자체 ADR과 명시적 승인이
-필요하다.
+**현재 v1 slice**는 강제 모델 + schema v2 manifest + opt-in loop emission seam +
+explicit staging live path + main promotion simulation이다. main 자율 머지
+오케스트레이션은 후속이다. 그 이상의 능력(무제한 self-modify / option 3, main 자동
+promotion, task 자동 생성)은 각각 자체 ADR과 명시적 승인이 필요하다.
 
 `_ship_env.py`와 manifest emission seam은 P2.1에서 `SELF_IMMUTABLE_PATHS`에 추가돼야
 한다 (현재 전체 `SELF_IMMUTABLE_PATHS` 구현과 함께 연기됨).

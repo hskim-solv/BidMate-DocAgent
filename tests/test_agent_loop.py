@@ -4644,6 +4644,23 @@ def test_make_active_start_can_disable_runner_and_has_korean_alias() -> None:
     assert '--auth-mode "chatgpt"' in alias.stdout
 
 
+def test_make_start_ship_enables_manifest_emission_without_legacy_ship_run() -> None:
+    result = subprocess.run(
+        ["make", "-n", "시작-ship"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "ACTIVE_TASK_POOL=1" in result.stdout
+    assert "ACTIVE_AUTO_LOOP_EMIT_SHIP_MANIFEST=1" in result.stdout
+    assert "--emit-ship-manifest" in result.stdout
+    assert '--ship-manifest-dir "reports/agent_loop/active"' in result.stdout
+    assert "--execute-ship" not in result.stdout
+
+
 def test_active_auto_loop_completes_task_and_picks_next_from_state(monkeypatch, tmp_path: Path) -> None:
     repo = _write_repo(tmp_path, task_id="T-2026-1001", title="First task")
     queue = repo / "tasks" / "queue.md"
@@ -4761,6 +4778,153 @@ def test_active_auto_loop_local_gate_completion_without_ship(monkeypatch, tmp_pa
     assert result.completed_task_ids == ("T-2026-1001",)
     assert result.cycles[0]["completion_decision"] == "local-gate-complete"
     assert any("recorded local gate completion" in warning for warning in result.warnings)
+
+
+def test_active_auto_loop_emits_ship_manifest_after_single_local_gate_completion(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Manifest seam task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+    source_sha = "0123456789abcdef0123456789abcdef01234567"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"ready": true, "privacy_clean": true}\n', encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+    monkeypatch.setattr(agent_loop, "_current_git_head_full", lambda repo_root: source_sha)
+    monkeypatch.setattr(
+        agent_loop,
+        "_changed_files_from_git",
+        lambda repo_root: ["reports/agent_loop/active/auto_loop.md"],
+    )
+
+    result = agent_loop.write_active_auto_loop(
+        task_pool=1,
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        emit_ship_manifest=True,
+        ship_manifest_dir=active_dir,
+        ship_day="2026-06-06",
+        repo_root=repo,
+    )
+
+    manifest_path = active_dir / "ship_manifest.json"
+    assert result.decision == "limit-reached"
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 2
+    assert manifest["source_branch"] == "chore/issue-9999-active-loop"
+    assert manifest["source_sha"] == source_sha
+    assert manifest["target"] == "staging"
+    assert manifest["base_branch"] == "autopilot/integration"
+    assert manifest["day"] == "2026-06-06"
+    assert manifest["gate_evidence_path"] == "reports/agent_loop/active/gate_evidence/T-2026-1001/evidence.json"
+    assert manifest["gate_evidence_digest"].startswith("sha256:")
+    assert any("ship manifest emitted" in warning for warning in result.warnings)
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["ship_manifest_emission"]["emitted"] is True
+
+
+def test_active_auto_loop_does_not_emit_ship_manifest_by_default(monkeypatch, tmp_path: Path) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="No manifest by default")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+
+    result = agent_loop.write_active_auto_loop(
+        task_pool=1,
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        repo_root=repo,
+    )
+
+    assert result.decision == "limit-reached"
+    assert not (active_dir / "ship_manifest.json").exists()
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert "ship_manifest_emission" not in state
+
+
+def test_active_auto_loop_blocks_ship_manifest_when_non_report_edits_are_uncommitted(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    repo = _write_repo(tmp_path, task_id="T-2026-1001", title="Dirty tree task")
+    _patch_active_loop_clear(monkeypatch)
+    active_dir = repo / "reports" / "agent_loop" / "active"
+
+    def fake_runner(**kwargs):  # type: ignore[no-untyped-def]
+        report = active_dir / "codex_runner.md"
+        state = active_dir / "codex_runner_state.json"
+        runs = active_dir / "codex_runs"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# runner\n", encoding="utf-8")
+        state.write_text("{}\n", encoding="utf-8")
+        return agent_loop.ActiveCodexRunnerResult(report, state, runs, "completed", (), (), ())
+
+    def fake_gate(*, task_id, **kwargs):  # type: ignore[no-untyped-def]
+        path = active_dir / "gate_evidence" / task_id / "evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+        return path, {"ready": True, "privacy_clean": True}
+
+    monkeypatch.setattr(agent_loop, "write_active_codex_runner", fake_runner)
+    monkeypatch.setattr(agent_loop, "write_active_gate_evidence", fake_gate)
+    monkeypatch.setattr(
+        agent_loop,
+        "_current_git_head_full",
+        lambda repo_root: "0123456789abcdef0123456789abcdef01234567",
+    )
+    monkeypatch.setattr(agent_loop, "_changed_files_from_git", lambda repo_root: ["scripts/agent_loop.py"])
+
+    result = agent_loop.write_active_auto_loop(
+        task_pool=1,
+        max_iterations=1,
+        execute_runner=True,
+        execute_ship=False,
+        emit_ship_manifest=True,
+        ship_manifest_dir=active_dir,
+        repo_root=repo,
+    )
+
+    assert not (active_dir / "ship_manifest.json").exists()
+    assert any("ship manifest not emitted" in warning for warning in result.warnings)
+    state = json.loads((active_dir / "auto_loop_state.json").read_text(encoding="utf-8"))
+    assert state["ship_manifest_emission"]["emitted"] is False
+    assert "uncommitted" in state["ship_manifest_emission"]["reason"]
 
 
 def test_active_auto_loop_absolute_target_stops_when_already_reached(tmp_path: Path) -> None:
@@ -5599,6 +5763,8 @@ def test_active_auto_loop_parser_defaults_align_with_makefile() -> None:
     assert args.read_agent == "auto"
     assert args.write_agent == "auto"
     assert args.max_iterations == "1"
+    assert args.emit_ship_manifest is False
+    assert args.ship_manifest_dir == agent_loop.DEFAULT_ACTIVE_DIR
 
 
 def test_active_auto_loop_infinite_runs_until_ready_queue_drains(monkeypatch, tmp_path: Path) -> None:

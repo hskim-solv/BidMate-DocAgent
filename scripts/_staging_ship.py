@@ -19,25 +19,31 @@ guards, and (b) **fails closed** (``EnforcementNotVerified``) unless the externa
 protection is read-verified, so it can never silently "pass" gate 3 without the real
 GitHub setup.
 
-D1 scope (this PR)
-------------------
-This PR ships exactly **D1 = enforcement-model activation + manifest contract**:
+D1 + v1 primitive scope
+-----------------------
+This module keeps main promotion live wiring deferred, but now carries the local
+contracts and explicit staging live path needed by self-ship v1:
   1. The ship-manifest contract (write/read/archive + schema) — the loop→lane hand-off.
   2. A *live* read-only ``protection_verified`` that actually queries GitHub branch
      protection (``gh repo view`` + ``gh api .../protection``) and returns True only
      when the specific ``staging-self-ship-guard`` required check is present AND
      force-push is denied.
-The **autonomous merge orchestration** (PR open/merge, daily-cap transactionality,
-serialized promotion via a single-instance lock, source-SHA binding) is deliberately
-DEFERRED to **P2.2** because it needs cross-worktree transactional hardening. The
-``_RealGitOps`` open_pr/merge methods are therefore honest stubs that raise
-``EnforcementNotVerified``, and ``main()`` is a verify-and-refuse pre-flight harness
-that NEVER merges.
+  3. An explicit ``--execute-live-staging`` path for staging PR create/check/merge
+     using ``BIDMATE_SHIP_MERGE_TOKEN`` and ``--match-head-commit``.
+  4. A read-only GraphQL resolver for main review-gate facts
+     (``reviewDecision`` + unresolved non-outdated review threads).
+  5. Fail-closed local primitives for main-gate simulation, guard-change external
+     ack, bounded no-cap mode, and promotion locking.
+The **main** autonomous merge orchestration (main source binding around live PRs,
+live main mutation, and durable cap-store semantics) is still deferred. The default
+CLI mode remains verify-and-refuse; staging mutation requires the explicit flag and
+never uses admin/delete-branch bypasses.
 """
 
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -82,6 +88,9 @@ _PROTECTED_TARGETS: frozenset[str] = frozenset(
 # Only branches under this namespace are acceptable staging targets.
 _STAGING_PREFIX = "autopilot/"
 _STAGING_EXACT = "autopilot/integration"
+_TARGET_STAGING = "staging"
+_TARGET_MAIN = "main"
+_MAIN_EXACT = "main"
 
 # ADR 0088 external-enforcement authority: this exact required status check must be
 # present in the branch protection, not merely *some* required check.
@@ -97,6 +106,34 @@ _GH_TIMEOUT_SEC = 30
 _GH_AMBIENT_DROP_KEYS: frozenset[str] = frozenset(
     {"GH_REPO", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}
 )
+_SHIP_MERGE_TOKEN_ENV = "BIDMATE_SHIP_MERGE_TOKEN"
+_REVIEW_THREADS_PAGE_SIZE = 100
+_REVIEW_THREADS_MAX_PAGES = 10
+_REVIEW_GATE_QUERY = """
+query(
+  $owner: String!,
+  $name: String!,
+  $number: Int!,
+  $first: Int!,
+  $after: String
+) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewDecision
+      reviewThreads(first: $first, after: $after) {
+        nodes {
+          isResolved
+          isOutdated
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+}
+""".strip()
 
 _FORCE_PUSH_TOKENS: frozenset[str] = frozenset(
     {"--force", "-f", "--force-with-lease", "--mirror"}
@@ -165,10 +202,50 @@ def assert_ship_arm_not_active(repo_root: str | os.PathLike[str]) -> None:
 # --------------------------------------------------------------------------- #
 SHIP_MANIFEST_FILENAME = "ship_manifest.json"
 SHIP_MANIFEST_CONSUMED = "ship_manifest.consumed.json"
-SHIP_MANIFEST_SCHEMA_VERSION = 1
+SHIP_MANIFEST_SCHEMA_VERSION = 2
 
 _SHIP_MANIFEST_REQUIRED_KEYS = frozenset(
-    {"schema_version", "source_branch", "source_sha", "title", "body", "day"}
+    {
+        "schema_version",
+        "source_branch",
+        "source_sha",
+        "target",
+        "base_branch",
+        "title",
+        "body",
+        "day",
+        "gate_evidence_path",
+        "gate_evidence_digest",
+        "protected_paths_changed",
+        "ci_evidence_ref",
+        "review_gate_ref",
+    }
+)
+
+SELF_SHIP_PROTECTED_PATH_GLOBS: tuple[str, ...] = (
+    "Makefile",
+    "scripts/agent_loop.py",
+    "scripts/_staging_ship.py",
+    "scripts/_ship_env.py",
+    "scripts/claude-hooks/**",
+    ".githooks/**",
+    ".claude/settings.json",
+    ".github/CODEOWNERS",
+    ".github/workflows/staging-self-ship-guard.yml",
+    ".github/workflows/branch-and-issue-check.yml",
+    ".github/workflows/pr-eval.yml",
+    "docs/operations/staging-self-ship.md",
+    "docs/operations/auto-ship.md",
+    "docs/operations/active-agent-loop.md",
+    "docs/adr/0088-*",
+    "docs/adr/0090-*",
+    "docs/adr/*self-ship*",
+)
+
+_ALLOWED_MANIFEST_TARGETS = frozenset({_TARGET_STAGING, _TARGET_MAIN})
+_ACK_ALLOWED_PERMISSIONS = frozenset({"maintain", "admin"})
+_ACK_DENIED_ACTOR_KINDS = frozenset(
+    {"runner", "bot", "github-actions", "dependency-bot", "codex", "claude", "omx", "merge-token"}
 )
 
 
@@ -180,13 +257,20 @@ def write_ship_manifest(
     title: str,
     body: str,
     day: str,
+    target: str = _TARGET_STAGING,
+    base_branch: str = _STAGING_EXACT,
+    gate_evidence_path: str = "",
+    gate_evidence_digest: str = "",
+    protected_paths_changed: list[str] | tuple[str, ...] | None = None,
+    ci_evidence_ref: str = "",
+    review_gate_ref: str = "",
     now: datetime | None = None,
 ) -> Path:
-    """Write ``<manifest_dir>/ship_manifest.json`` with the P2.0 contract.
+    """Write ``<manifest_dir>/ship_manifest.json`` with the v2 contract.
 
     ``agent_loop.py`` imports and calls this with the keyword signature above;
     the signature is part of the contract — do not change it. ``source_sha`` binds
-    the merge to the exact gated commit (consumed by the deferred P2.2 merge
+    the merge to the exact gated commit (consumed by live staging / deferred main
     orchestration via ``--match-head-commit``).
     """
     generated_at = (now or datetime.now(timezone.utc)).isoformat()
@@ -194,9 +278,16 @@ def write_ship_manifest(
         "schema_version": SHIP_MANIFEST_SCHEMA_VERSION,
         "source_branch": source_branch,
         "source_sha": source_sha,
+        "target": target,
+        "base_branch": base_branch,
         "title": title,
         "body": body,
         "day": day,
+        "gate_evidence_path": gate_evidence_path,
+        "gate_evidence_digest": gate_evidence_digest,
+        "protected_paths_changed": sorted(set(protected_paths_changed or [])),
+        "ci_evidence_ref": ci_evidence_ref,
+        "review_gate_ref": review_gate_ref,
         "generated_at": generated_at,
     }
     directory = Path(manifest_dir)
@@ -209,15 +300,15 @@ def write_ship_manifest(
     return path
 
 
-# A valid source_sha is a full 40-char lowercase hex git SHA (binds the deferred P2.2
-# merge to the exact gated commit). A malformed/empty SHA fails the manifest closed.
+# A valid source_sha is a full 40-char lowercase hex git SHA (binds live staging /
+# deferred main merge to the exact gated commit). A malformed/empty SHA fails closed.
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def read_ship_manifest(manifest_dir: str | os.PathLike[str]) -> dict | None:
     """Read + validate ``<dir>/ship_manifest.json`` WITHOUT consuming it.
 
-    Parses the manifest and validates the P2.0 contract, then returns the dict.
+    Parses the manifest and validates the schema v2 contract, then returns the dict.
     This is intentionally **idempotent / re-readable**: it does NOT rename the file
     (codex #3 / G1). Consumption happens only on a successful ship via
     :func:`archive_ship_manifest`, so a blocked / interrupted run leaves the manifest
@@ -246,7 +337,266 @@ def read_ship_manifest(manifest_dir: str | os.PathLike[str]) -> dict | None:
         raise ValueError(
             f"ship manifest {src} source_sha {source_sha!r} is not a 40-char hex SHA"
         )
+    target = data.get("target")
+    if target not in _ALLOWED_MANIFEST_TARGETS:
+        raise ValueError(
+            f"ship manifest {src} target {target!r} must be one of {sorted(_ALLOWED_MANIFEST_TARGETS)}"
+        )
+    for key in (
+        "source_branch",
+        "base_branch",
+        "title",
+        "body",
+        "day",
+        "gate_evidence_path",
+        "gate_evidence_digest",
+        "ci_evidence_ref",
+        "review_gate_ref",
+    ):
+        if not isinstance(data.get(key), str):
+            raise ValueError(f"ship manifest {src} field {key!r} must be a string")
+    if target == _TARGET_STAGING and data["base_branch"] != _STAGING_EXACT:
+        raise ValueError(
+            f"ship manifest {src} staging target must bind base_branch to {_STAGING_EXACT!r}"
+        )
+    if target == _TARGET_MAIN:
+        if data["base_branch"] != _MAIN_EXACT:
+            raise ValueError(
+                f"ship manifest {src} main target must bind base_branch to {_MAIN_EXACT!r}"
+            )
+        for key in (
+            "gate_evidence_path",
+            "gate_evidence_digest",
+            "ci_evidence_ref",
+            "review_gate_ref",
+        ):
+            if not data[key].strip():
+                raise ValueError(f"ship manifest {src} main field {key!r} must be non-empty")
+    protected_paths = data.get("protected_paths_changed")
+    if not isinstance(protected_paths, list) or not all(
+        isinstance(path, str) for path in protected_paths
+    ):
+        raise ValueError(
+            f"ship manifest {src} protected_paths_changed must be a list of strings"
+        )
     return data
+
+
+def detect_self_ship_protected_paths(paths: list[str] | tuple[str, ...]) -> list[str]:
+    """Return changed paths that require external human ack for main self-ship.
+
+    This is an in-process detector only. The authoritative unblock decision still
+    comes from external ack evidence resolved by the promoter.
+    """
+    protected: set[str] = set()
+    for raw in paths:
+        path = str(raw).strip().lstrip("./")
+        if any(fnmatch.fnmatchcase(path, pattern) for pattern in SELF_SHIP_PROTECTED_PATH_GLOBS):
+            protected.add(path)
+    return sorted(protected)
+
+
+@dataclass(frozen=True)
+class GuardChangeAck:
+    """External ack evidence for guard/ship/protection path changes.
+
+    Runner-authored manifests/reports are never valid ack sources. The promoter
+    must bind this evidence to the exact source SHA and protected path set.
+    """
+
+    actor: str
+    actor_kind: str
+    source_sha: str
+    protected_paths: tuple[str, ...]
+    permission: str = ""
+    external: bool = True
+    codeowner_approval: bool = False
+
+
+def guard_change_ack_valid(
+    ack: GuardChangeAck | None,
+    *,
+    source_sha: str,
+    protected_paths: list[str] | tuple[str, ...],
+) -> bool:
+    """True only for external maintainer/admin/CODEOWNER ack bound to this diff."""
+    required_paths = tuple(sorted(set(protected_paths)))
+    if not required_paths:
+        return True
+    if ack is None or not ack.external:
+        return False
+    if ack.actor_kind.strip().lower() in _ACK_DENIED_ACTOR_KINDS:
+        return False
+    if ack.source_sha != source_sha:
+        return False
+    if tuple(sorted(set(ack.protected_paths))) != required_paths:
+        return False
+    if ack.codeowner_approval:
+        return True
+    return ack.permission.strip().lower() in _ACK_ALLOWED_PERMISSIONS
+
+
+def review_gate_clean(
+    review_decision: str | None,
+    unresolved_non_outdated_threads: int | None,
+    *,
+    api_error: bool = False,
+) -> bool:
+    """Main review gate: APPROVED and zero unresolved non-outdated threads only."""
+    if api_error:
+        return False
+    if review_decision != "APPROVED":
+        return False
+    return unresolved_non_outdated_threads == 0
+
+
+@dataclass(frozen=True)
+class ReviewGateResolution:
+    """Read-only GitHub review gate facts resolved by the promoter.
+
+    ``api_error=True`` means the result must be treated as not clean. The
+    unresolved count is only authoritative when every requested page was fetched
+    and parsed.
+    """
+
+    review_decision: str | None
+    unresolved_non_outdated_threads: int | None
+    fetched_thread_pages: int = 0
+    api_error: bool = False
+
+
+def _review_gate_api_error(
+    *,
+    review_decision: str | None = None,
+    fetched_thread_pages: int = 0,
+) -> ReviewGateResolution:
+    return ReviewGateResolution(
+        review_decision=review_decision,
+        unresolved_non_outdated_threads=None,
+        fetched_thread_pages=fetched_thread_pages,
+        api_error=True,
+    )
+
+
+@dataclass(frozen=True)
+class MainGateSnapshot:
+    """Promoter-resolved external facts for main promotion.
+
+    Manifest refs may point to evidence, but they do not authorize merge. This
+    snapshot is the value object used by tests/fake GitHub adapters to prove that
+    the promoter, not the runner, resolved CI/review/protection/source state.
+    """
+
+    ci_green: bool
+    review_decision: str | None
+    unresolved_non_outdated_threads: int | None
+    protection_verified: bool
+    token_verified: bool
+    pr_head_sha: str | None
+    api_error: bool = False
+
+
+def bounded_main_without_cap_blocker(
+    *,
+    target: str,
+    target_manifest_count: int,
+    distinct_main_source_sha_count: int,
+    start_infinite: bool = False,
+    active_auto_loop_max_iterations: int | None = None,
+    retry_loop_requested: bool = False,
+) -> ShipResult | None:
+    """Block unbounded main promotion until a self-immutable cap store exists."""
+    if target != _TARGET_MAIN:
+        return None
+    reasons: list[str] = []
+    if start_infinite:
+        reasons.append("START_INFINITE=1")
+    if active_auto_loop_max_iterations == 0:
+        reasons.append("ACTIVE_AUTO_LOOP_MAX_ITERATIONS=0")
+    if target_manifest_count > 1:
+        reasons.append("multiple main manifests in one invocation")
+    if retry_loop_requested:
+        reasons.append("automatic retry loop requested")
+    if distinct_main_source_sha_count > 1:
+        reasons.append("more than one distinct main source SHA")
+    if reasons:
+        return ShipResult("main-blocked-cap-deferred", reasons=reasons)
+    return None
+
+
+def evaluate_main_promotion(
+    manifest: dict,
+    gates: MainGateSnapshot,
+    *,
+    ack: GuardChangeAck | None = None,
+    target_manifest_count: int = 1,
+    distinct_main_source_sha_count: int = 1,
+    start_infinite: bool = False,
+    active_auto_loop_max_iterations: int | None = None,
+    retry_loop_requested: bool = False,
+) -> ShipResult:
+    """Simulate the fail-closed main promotion gate from promoter-resolved facts."""
+    if manifest.get("target") != _TARGET_MAIN:
+        return ShipResult("not-main", reasons=["manifest target is not main"])
+    cap_block = bounded_main_without_cap_blocker(
+        target=_TARGET_MAIN,
+        target_manifest_count=target_manifest_count,
+        distinct_main_source_sha_count=distinct_main_source_sha_count,
+        start_infinite=start_infinite,
+        active_auto_loop_max_iterations=active_auto_loop_max_iterations,
+        retry_loop_requested=retry_loop_requested,
+    )
+    if cap_block is not None:
+        return cap_block
+    if not gates.protection_verified:
+        return ShipResult("main-blocked-protection", reasons=["main branch protection not verified"])
+    if not gates.token_verified:
+        return ShipResult("main-blocked-token", reasons=["merge token not verified as non-admin"])
+    if not gates.ci_green:
+        return ShipResult("main-blocked-ci", reasons=["promoter-resolved CI is not green"])
+    if not review_gate_clean(
+        gates.review_decision,
+        gates.unresolved_non_outdated_threads,
+        api_error=gates.api_error,
+    ):
+        return ShipResult("main-blocked-review", reasons=["review gate is not clean"])
+    source_sha = manifest.get("source_sha")
+    if gates.pr_head_sha != source_sha:
+        return ShipResult("main-blocked-source-mismatch", reasons=["PR head SHA differs from manifest"])
+    protected_paths = manifest.get("protected_paths_changed") or []
+    if protected_paths and not guard_change_ack_valid(
+        ack,
+        source_sha=source_sha,
+        protected_paths=protected_paths,
+    ):
+        return ShipResult("main-blocked-guard-ack", reasons=["protected path change lacks external ack"])
+    return ShipResult("main-merge-allowed")
+
+
+class PromotionLock:
+    """Small cross-process lock primitive for promotion critical sections."""
+
+    def __init__(self, lock_path: str | os.PathLike[str]):
+        self.lock_path = Path(lock_path)
+        self._fd: int | None = None
+
+    def __enter__(self) -> "PromotionLock":
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self._fd = os.open(str(self.lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError as exc:
+            raise EnforcementNotVerified(f"promotion lock already held: {self.lock_path}") from exc
+        os.write(self._fd, str(os.getpid()).encode("ascii"))
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:  # noqa: ANN001
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
+        try:
+            self.lock_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def archive_ship_manifest(manifest_dir: str | os.PathLike[str]) -> None:
@@ -255,7 +605,7 @@ def archive_ship_manifest(manifest_dir: str | os.PathLike[str]) -> None:
     Called ONLY after a successful ship so the manifest can never be re-consumed once
     its work landed. ``os.replace`` is atomic; a no-op when the source manifest is
     already gone (idempotent). NOTE: the D1 ``main()`` harness never ships, so it does
-    not archive — archiving belongs to the deferred P2.2 merge orchestration.
+    not archive — archiving belongs only to successful live staging / main promotion.
     """
     directory = Path(manifest_dir)
     src = directory / SHIP_MANIFEST_FILENAME
@@ -325,6 +675,26 @@ class DailyMergeCapCounter:
         self.store.increment(day)
 
 
+class SingleInvocationCounterStore:
+    """Bounded staging-only counter for one explicit CLI invocation.
+
+    This is not the deferred durable cap store for main promotion. It is intentionally
+    process-local and only supports the v1 rule "one live staging merge attempt per
+    explicit invocation".
+    """
+
+    loop_writable = False
+
+    def __init__(self) -> None:
+        self._counts: dict[str, int] = {}
+
+    def get(self, day: str) -> int:
+        return self._counts.get(day, 0)
+
+    def increment(self, day: str) -> None:
+        self._counts[day] = self._counts.get(day, 0) + 1
+
+
 # --------------------------------------------------------------------------- #
 # Git/gh operations interface (injectable for tests)
 # --------------------------------------------------------------------------- #
@@ -343,7 +713,7 @@ class GitOps(Protocol):
         """True only when ALL required status checks reported SUCCESS (pending/absent -> False)."""
         ...
 
-    def merge(self, pr_id: str) -> None: ...
+    def merge(self, pr_id: str, *, match_head_commit: str | None = None) -> None: ...
 
 
 @dataclass
@@ -365,7 +735,15 @@ class StagingShipLane:
     target_branch: str = _STAGING_EXACT
     require_external_enforcement: bool = True
 
-    def ship(self, *, source: str, title: str, body: str, day: str) -> ShipResult:
+    def ship(
+        self,
+        *,
+        source: str,
+        title: str,
+        body: str,
+        day: str,
+        source_sha: str = "",
+    ) -> ShipResult:
         # 1) mutual exclusion with ship-arm (ADR 0088 §7)
         assert_ship_arm_not_active(self.repo_root)
         # 2) kill-switch (checked before any side effect)
@@ -396,7 +774,10 @@ class StagingShipLane:
         if not self.ops.required_checks_all_success(pr_id):
             self.failures.record_failure()
             return ShipResult("blocked-ci", pr_id=pr_id, reasons=["required checks not all SUCCESS"])
-        self.ops.merge(pr_id)
+        if source_sha:
+            self.ops.merge(pr_id, match_head_commit=source_sha)
+        else:
+            self.ops.merge(pr_id)
         self.merge_cap.record_merge(day)
         self.failures.record_success()
         return ShipResult("shipped", pr_id=pr_id)
@@ -406,19 +787,18 @@ class StagingShipLane:
 # Real git/gh ops (used by the CLI). Runner is injectable so the methods are
 # unit-testable without touching the network.
 #
-# D1 split: ``protection_verified`` is LIVE (read-only) — it actually queries the
-# GitHub branch protection. The side-effecting merge orchestration (open_pr / merge /
-# required_checks_all_success) is DEFERRED to P2.2 and kept as honest stubs that
-# refuse rather than fake.
+# Split: ``protection_verified`` is LIVE read-only. The side-effecting staging
+# methods are implemented but are only reachable from the CLI through the explicit
+# ``--execute-live-staging`` flag; the default CLI path remains verify-and-refuse.
 # --------------------------------------------------------------------------- #
 class _RealGitOps:
     """Shells out to git/gh via an injectable runner.
 
     ``protection_verified`` read-verifies the *actual* GitHub branch protection
     (the ``staging-self-ship-guard`` required check is present + force-push denied);
-    there is no env-trust bypass. The merge-orchestration methods are deferred to
-    P2.2 and raise/return so this lane can verify external enforcement read-only
-    without yet auto-merging.
+    there is no env-trust bypass. Mutation methods use only the permission-separated
+    ``BIDMATE_SHIP_MERGE_TOKEN`` mapped to ``GH_TOKEN`` and never pass ``--admin`` or
+    ``--delete-branch``.
     """
 
     def __init__(self, run=None, repo_root="."):
@@ -441,7 +821,7 @@ class _RealGitOps:
             env = {
                 k: v
                 for k, v in os.environ.items()
-                if k not in _GH_AMBIENT_DROP_KEYS
+                if k not in _GH_AMBIENT_DROP_KEYS and k != _SHIP_MERGE_TOKEN_ENV
             }
         return self._run(
             argv,
@@ -453,6 +833,51 @@ class _RealGitOps:
             timeout=_GH_TIMEOUT_SEC,
         )
 
+    def _repo_identity(self) -> tuple[str, str] | None:
+        """Return (owner, repo) resolved from this repo root, or None on failure."""
+        try:
+            view = self._gh(["gh", "repo", "view", "--json", "owner,name"])
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if view.returncode != 0:
+            return None
+        try:
+            repo = json.loads(view.stdout)
+            owner = repo["owner"]["login"]
+            name = repo["name"]
+        except (ValueError, KeyError, TypeError):
+            return None
+        if not isinstance(owner, str) or not isinstance(name, str) or not owner or not name:
+            return None
+        return owner, name
+
+    def _mutation_env(self) -> dict[str, str]:
+        token = os.environ.get(_SHIP_MERGE_TOKEN_ENV, "").strip()
+        if not token:
+            raise EnforcementNotVerified(
+                f"{_SHIP_MERGE_TOKEN_ENV} is required for live self-ship mutation"
+            )
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in _GH_AMBIENT_DROP_KEYS and k != _SHIP_MERGE_TOKEN_ENV
+        }
+        env["GH_TOKEN"] = token
+        return env
+
+    def _pr_view(self, source: str) -> dict | None:
+        proc = self._gh(
+            ["gh", "pr", "view", source, "--json", "number,baseRefName,headRefOid,state"],
+            env=self._mutation_env(),
+        )
+        if proc.returncode != 0:
+            return None
+        try:
+            data = json.loads(proc.stdout)
+        except ValueError:
+            return None
+        return data if isinstance(data, dict) else None
+
     def protection_verified(self, branch: str) -> bool:
         # Fail CLOSED on ANY environmental failure of the gh subprocess (issue #1697
         # BLOCKING): gh missing (FileNotFoundError/OSError), a hung gh
@@ -461,18 +886,10 @@ class _RealGitOps:
         # of this verifier and crash main(). Nonzero rc + unparseable JSON + incomplete
         # protection state are handled below and likewise fail closed.
         # Derive owner/repo for the gh api path.
-        try:
-            view = self._gh(["gh", "repo", "view", "--json", "owner,name"])
-        except (OSError, subprocess.SubprocessError):
+        repo = self._repo_identity()
+        if repo is None:
             return False
-        if view.returncode != 0:
-            return False
-        try:
-            repo = json.loads(view.stdout)
-            owner = repo["owner"]["login"]
-            name = repo["name"]
-        except (ValueError, KeyError, TypeError):
-            return False
+        owner, name = repo
         # URL-encode the branch (staging branches contain a slash, e.g.
         # ``autopilot/integration`` -> ``autopilot%2Fintegration``) so the gh api
         # path is not malformed (informational #1 / G4).
@@ -529,38 +946,238 @@ class _RealGitOps:
             return False
         return True
 
-    def open_pr(self, *, source: str, base: str, title: str, body: str) -> str:
-        raise EnforcementNotVerified(
-            "live merge orchestration is deferred to P2.2; this lane verifies external "
-            "enforcement but does not yet auto-merge"
+    def resolve_review_gate(
+        self,
+        pr_id: str | int,
+        *,
+        page_size: int = _REVIEW_THREADS_PAGE_SIZE,
+        max_pages: int = _REVIEW_THREADS_MAX_PAGES,
+    ) -> ReviewGateResolution:
+        """Read-only GraphQL resolver for main review-gate facts.
+
+        The clean path is intentionally narrow: ``reviewDecision == APPROVED`` and
+        every non-outdated review thread is resolved. Any gh/API/schema/pagination
+        failure returns ``api_error=True`` so callers fail closed.
+        """
+        try:
+            pr_number = int(str(pr_id))
+        except (TypeError, ValueError):
+            return _review_gate_api_error()
+        if pr_number <= 0 or not (1 <= page_size <= 100) or max_pages <= 0:
+            return _review_gate_api_error()
+        repo = self._repo_identity()
+        if repo is None:
+            return _review_gate_api_error()
+        owner, name = repo
+        after: str | None = None
+        review_decision: str | None = None
+        unresolved_non_outdated = 0
+        for page_idx in range(max_pages):
+            argv = [
+                "gh",
+                "api",
+                "graphql",
+                "-f",
+                f"query={_REVIEW_GATE_QUERY}",
+                "-F",
+                f"owner={owner}",
+                "-F",
+                f"name={name}",
+                "-F",
+                f"number={pr_number}",
+                "-F",
+                f"first={page_size}",
+            ]
+            if after is not None:
+                argv.extend(["-F", f"after={after}"])
+            try:
+                proc = self._gh(argv)
+            except (OSError, subprocess.SubprocessError):
+                return _review_gate_api_error(
+                    review_decision=review_decision,
+                    fetched_thread_pages=page_idx,
+                )
+            if proc.returncode != 0:
+                return _review_gate_api_error(
+                    review_decision=review_decision,
+                    fetched_thread_pages=page_idx,
+                )
+            try:
+                payload = json.loads(proc.stdout)
+            except ValueError:
+                return _review_gate_api_error(
+                    review_decision=review_decision,
+                    fetched_thread_pages=page_idx,
+                )
+            if not isinstance(payload, dict) or payload.get("errors"):
+                return _review_gate_api_error(
+                    review_decision=review_decision,
+                    fetched_thread_pages=page_idx,
+                )
+            data = payload.get("data")
+            if not isinstance(data, dict):
+                return _review_gate_api_error(fetched_thread_pages=page_idx)
+            repository = data.get("repository")
+            if not isinstance(repository, dict):
+                return _review_gate_api_error(fetched_thread_pages=page_idx)
+            pull_request = repository.get("pullRequest")
+            if not isinstance(pull_request, dict):
+                return _review_gate_api_error(fetched_thread_pages=page_idx)
+            raw_decision = pull_request.get("reviewDecision")
+            if raw_decision is not None and not isinstance(raw_decision, str):
+                return _review_gate_api_error(fetched_thread_pages=page_idx)
+            review_decision = raw_decision
+            threads = pull_request.get("reviewThreads")
+            if not isinstance(threads, dict):
+                return _review_gate_api_error(
+                    review_decision=review_decision,
+                    fetched_thread_pages=page_idx,
+                )
+            nodes = threads.get("nodes")
+            page_info = threads.get("pageInfo")
+            if not isinstance(nodes, list) or not isinstance(page_info, dict):
+                return _review_gate_api_error(
+                    review_decision=review_decision,
+                    fetched_thread_pages=page_idx,
+                )
+            for node in nodes:
+                if not isinstance(node, dict):
+                    return _review_gate_api_error(
+                        review_decision=review_decision,
+                        fetched_thread_pages=page_idx,
+                    )
+                is_resolved = node.get("isResolved")
+                is_outdated = node.get("isOutdated")
+                if not isinstance(is_resolved, bool) or not isinstance(is_outdated, bool):
+                    return _review_gate_api_error(
+                        review_decision=review_decision,
+                        fetched_thread_pages=page_idx,
+                    )
+                if not is_resolved and not is_outdated:
+                    unresolved_non_outdated += 1
+            has_next = page_info.get("hasNextPage")
+            end_cursor = page_info.get("endCursor")
+            fetched_pages = page_idx + 1
+            if not isinstance(has_next, bool):
+                return _review_gate_api_error(
+                    review_decision=review_decision,
+                    fetched_thread_pages=fetched_pages,
+                )
+            if not has_next:
+                return ReviewGateResolution(
+                    review_decision=review_decision,
+                    unresolved_non_outdated_threads=unresolved_non_outdated,
+                    fetched_thread_pages=fetched_pages,
+                    api_error=False,
+                )
+            if not isinstance(end_cursor, str) or not end_cursor:
+                return _review_gate_api_error(
+                    review_decision=review_decision,
+                    fetched_thread_pages=fetched_pages,
+                )
+            after = end_cursor
+        return _review_gate_api_error(
+            review_decision=review_decision,
+            fetched_thread_pages=max_pages,
         )
+
+    def open_pr(self, *, source: str, base: str, title: str, body: str) -> str:
+        existing = self._pr_view(source)
+        if existing is not None:
+            if existing.get("baseRefName") != base:
+                raise EnforcementNotVerified(
+                    f"existing PR for {source!r} targets {existing.get('baseRefName')!r}, "
+                    f"not expected base {base!r}"
+                )
+            if existing.get("state") != "OPEN":
+                raise EnforcementNotVerified(f"existing PR for {source!r} is not open")
+            return str(existing["number"])
+        proc = self._gh(
+            [
+                "gh",
+                "pr",
+                "create",
+                "--head",
+                source,
+                "--base",
+                base,
+                "--title",
+                title,
+                "--body",
+                body,
+                "--no-maintainer-edit",
+            ],
+            env=self._mutation_env(),
+        )
+        if proc.returncode != 0:
+            raise EnforcementNotVerified("gh pr create failed")
+        created = self._pr_view(source)
+        if created is None or created.get("baseRefName") != base or created.get("state") != "OPEN":
+            raise EnforcementNotVerified("created PR could not be re-read/bound to expected base")
+        return str(created["number"])
 
     def required_checks_all_success(self, pr_id: str) -> bool:
-        return False
+        try:
+            proc = self._gh(
+                [
+                    "gh",
+                    "pr",
+                    "checks",
+                    str(pr_id),
+                    "--required",
+                    "--json",
+                    "name,state,bucket",
+                ],
+                env=self._mutation_env(),
+            )
+        except (OSError, subprocess.SubprocessError, EnforcementNotVerified):
+            return False
+        if proc.returncode != 0:
+            return False
+        try:
+            checks = json.loads(proc.stdout)
+        except ValueError:
+            return False
+        if not isinstance(checks, list) or not checks:
+            return False
+        return all(isinstance(item, dict) and item.get("bucket") == "pass" for item in checks)
 
-    def merge(self, pr_id: str) -> None:
-        raise EnforcementNotVerified(
-            "live merge orchestration is deferred to P2.2; this lane verifies external "
-            "enforcement but does not yet auto-merge"
+    def merge(self, pr_id: str, *, match_head_commit: str | None = None) -> None:
+        if not match_head_commit or not _SHA_RE.match(match_head_commit):
+            raise EnforcementNotVerified("merge requires a 40-char source_sha for --match-head-commit")
+        proc = self._gh(
+            [
+                "gh",
+                "pr",
+                "merge",
+                str(pr_id),
+                "--squash",
+                "--match-head-commit",
+                match_head_commit,
+            ],
+            env=self._mutation_env(),
         )
+        if proc.returncode != 0:
+            raise EnforcementNotVerified("gh pr merge failed")
 
 
 def main(argv: list[str] | None = None) -> int:
-    """D1 verify-and-refuse harness — NEVER merges.
+    """Verify-first harness; live staging requires an explicit flag.
 
     Reads the ship manifest (loop → lane hand-off), runs the cheap local guards, and
-    LIVE-verifies the external GitHub branch protection (read-only). It ALWAYS returns
-    2 (blocked-on-user) because the autonomous merge orchestration (PR open/merge,
-    daily-cap transactionality, serialized promotion, source-SHA binding) is deferred
-    to P2.2. This is an honest pre-flight; nothing is faked.
+    LIVE-verifies the external GitHub branch protection (read-only). By default it
+    returns 2 (blocked-on-user) after verification. Only ``--execute-live-staging``
+    may create/check/merge a staging PR, and even then it requires ``source_sha`` so
+    merge uses ``--match-head-commit``.
     """
     parser = argparse.ArgumentParser(
-        description="P2.0 D1 staging self-ship pre-flight harness (ADR 0088/0090); does NOT merge"
+        description="staging self-ship verify-first harness (ADR 0088/0090); live merge requires --execute-live-staging"
     )
     parser.add_argument("--source", default="", help="source branch to ship")
     parser.add_argument("--title", default="")
     parser.add_argument("--body", default="")
     parser.add_argument("--day", default="")
+    parser.add_argument("--source-sha", default="", help="40-char source SHA for --match-head-commit")
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("--state-dir", default=".omc/state")
     parser.add_argument(
@@ -568,10 +1185,16 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="dir holding ship_manifest.json (defaults to --state-dir)",
     )
+    parser.add_argument(
+        "--execute-live-staging",
+        action="store_true",
+        help="explicitly create/check/merge a staging PR; default remains verify-and-refuse",
+    )
     args = parser.parse_args(argv)
 
     # 1) Read the manifest (loop -> lane hand-off). The read is idempotent — D1 never
-    #    ships, so it never archives the manifest (consumption belongs to P2.2).
+    #    ships, so it never archives the manifest (consumption belongs to successful
+    #    live staging / main promotion).
     manifest_dir = args.manifest_dir or args.state_dir
     try:
         manifest = read_ship_manifest(manifest_dir)
@@ -583,13 +1206,17 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if manifest is not None:
         source = manifest["source_branch"]
+        source_sha = manifest["source_sha"]
         title = manifest["title"]
         body = manifest["body"]
         day = manifest["day"]
+        target = manifest["target"]
     else:
-        source = title = body = day = ""
+        source = source_sha = title = body = day = ""
+        target = _TARGET_STAGING
     # CLI flags override manifest fields when non-empty.
     source = args.source or source
+    source_sha = args.source_sha or source_sha
     title = args.title or title
     body = args.body or body
     day = args.day or day
@@ -638,29 +1265,72 @@ def main(argv: list[str] | None = None) -> int:
     # 3b) No work to ship (no manifest AND no --source). The live protection pre-flight
     #     above has already run + reported (issue #1697 Fix 2), so the headline D-minus
     #     value is exercised even on the default path. Refuse rc 2 — there is nothing
-    #     to hand to the (deferred) P2.2 merge orchestration.
+    #     to hand to explicit live staging / deferred main promotion.
     if manifest is None and not args.source:
         sys.stderr.write("[staging-self-ship] blocked-on-user: no ship manifest\n")
         return 2
 
-    # 4) ALWAYS refuse to merge in D1, but the message must be HONEST about whether
+    if args.execute_live_staging:
+        if target != _TARGET_STAGING:
+            sys.stderr.write(
+                f"[staging-self-ship] blocked-on-user: live CLI only supports target={_TARGET_STAGING!r}\n"
+            )
+            return 2
+        if not source_sha or not _SHA_RE.match(source_sha):
+            sys.stderr.write(
+                "[staging-self-ship] blocked-on-user: --execute-live-staging requires "
+                "manifest source_sha or --source-sha for --match-head-commit\n"
+            )
+            return 2
+        if not enforcement_verified:
+            sys.stderr.write(
+                "[staging-self-ship] blocked-on-user: external enforcement must verify before live staging\n"
+            )
+            return 2
+        lane = StagingShipLane(
+            ops=ops,
+            repo_root=args.repo_root,
+            state_dir=args.state_dir,
+            merge_cap=DailyMergeCapCounter(store=SingleInvocationCounterStore(), cap=1),
+        )
+        try:
+            result = lane.ship(
+                source=source,
+                title=title,
+                body=body,
+                day=day,
+                source_sha=source_sha,
+            )
+        except (ShipArmConflict, StagingBoundaryViolation, ForcePushForbidden, EnforcementNotVerified) as exc:
+            sys.stderr.write(f"[staging-self-ship] blocked-on-user: live staging failed: {exc}\n")
+            return 2
+        if result.decision == "shipped":
+            archive_ship_manifest(manifest_dir)
+            sys.stderr.write(
+                f"[staging-self-ship] staging-merged: pr={result.pr_id} source_sha={source_sha}\n"
+            )
+            return 0
+        sys.stderr.write(
+            f"[staging-self-ship] {result.decision}: {'; '.join(result.reasons)}\n"
+        )
+        return 2
+
+    # 4) Default path refuses to merge, but the message must be HONEST about whether
     #    protection was actually verified (codex Fix 4): only claim "verified
     #    read-only" when the live check returned True; otherwise focus on the
-    #    unverified/unreachable enforcement. Either way autonomous merge orchestration
-    #    is deferred to P2.2.
+    #    unverified/unreachable enforcement. Live mutation requires the explicit
+    #    --execute-live-staging flag above.
     if enforcement_verified:
         sys.stderr.write(
             "[staging-self-ship] blocked-on-user: enforcement model verified read-only, but "
-            "autonomous merge orchestration (PR open/merge, daily-cap transactionality, "
-            "serialized promotion, source-SHA binding) is deferred to P2.2 — this lane does "
-            "not yet auto-merge.\n"
+            "default mode does not auto-merge. Re-run with --execute-live-staging only "
+            "when the manifest source_sha is the exact commit to merge.\n"
         )
     else:
         sys.stderr.write(
             "[staging-self-ship] blocked-on-user: external enforcement NOT verified / not "
             "reachable (required staging-self-ship-guard check, explicit force-push-deny, and "
-            "enforce_admins not confirmed). Autonomous merge orchestration is also deferred to "
-            "P2.2 — this lane does not yet auto-merge.\n"
+            "enforce_admins not confirmed). Default mode does not auto-merge.\n"
         )
     return 2
 

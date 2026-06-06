@@ -3,17 +3,18 @@
 Covers the constitutional-invariant guards (force-push / staging boundary /
 kill-switch / ship-arm exclusion), the breaker counters (T1 bounded, T4 cap with
 self-immutable store), the lane (CI-green gate, fail-closed external enforcement),
-the P2.0 ship-manifest contract, and the *live* read-only ``protection_verified``.
-git/gh is injected as a fake so no network/GitHub is touched.
+the schema v2 ship-manifest contract, local main-promotion guard primitives, and
+the *live* read-only ``protection_verified``. git/gh is injected as a fake so no
+network/GitHub is touched.
 
-D1 scope: the autonomous merge orchestration (open_pr/merge LIVE impls, daily-cap
-transactionality, single-instance lock, source-SHA binding, bounded-poll) is deferred
-to P2.2; ``_RealGitOps.open_pr``/``merge`` are honest stubs and ``main()`` is a
-verify-and-refuse harness that always returns rc 2. Those P2.2 behaviours are NOT
-tested here.
+Live mutation scope: staging PR create/check/merge is implemented but only reachable
+through ``--execute-live-staging``. Main promotion mutation is still deferred; the
+GitHub review-thread resolver is read-only. The default CLI path remains
+verify-and-refuse.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -233,7 +234,7 @@ def test_lane_rejects_raw_payload_in_body(tmp_path):
         )
 
 
-# --- P2.0 ship-manifest contract (US-1) --------------------------------------
+# --- schema v2 ship-manifest contract ----------------------------------------
 
 def test_manifest_round_trips_all_schema_fields(tmp_path):
     ss.write_ship_manifest(
@@ -243,15 +244,30 @@ def test_manifest_round_trips_all_schema_fields(tmp_path):
         title="chore: staging self-ship",
         body="5 PRs merged, revert 0",
         day="2026-05-31",
+        target="main",
+        base_branch="main",
+        gate_evidence_path="reports/agent_loop/active/gate_evidence/T-1/evidence.json",
+        gate_evidence_digest="sha256:0123",
+        protected_paths_changed=["scripts/_staging_ship.py", "Makefile"],
+        ci_evidence_ref="github-checks://pr/1",
+        review_gate_ref="github-review://pr/1",
     )
     data = ss.read_ship_manifest(tmp_path)
     assert data is not None
     assert data["schema_version"] == ss.SHIP_MANIFEST_SCHEMA_VERSION
+    assert data["schema_version"] == 2
     assert data["source_branch"] == "autopilot/work"
     assert data["source_sha"] == "0123456789abcdef0123456789abcdef01234567"
+    assert data["target"] == "main"
+    assert data["base_branch"] == "main"
     assert data["title"] == "chore: staging self-ship"
     assert data["body"] == "5 PRs merged, revert 0"
     assert data["day"] == "2026-05-31"
+    assert data["gate_evidence_path"].endswith("/evidence.json")
+    assert data["gate_evidence_digest"] == "sha256:0123"
+    assert data["protected_paths_changed"] == ["Makefile", "scripts/_staging_ship.py"]
+    assert data["ci_evidence_ref"] == "github-checks://pr/1"
+    assert data["review_gate_ref"] == "github-review://pr/1"
 
 
 def test_manifest_read_is_idempotent_not_consumed(tmp_path):
@@ -323,7 +339,7 @@ def test_manifest_missing_required_key_raises(tmp_path):
 def test_manifest_missing_source_sha_key_raises(tmp_path):
     import json
 
-    # source_sha is part of the D1 required-keys contract (merge-binding for P2.2).
+    # source_sha is part of the required-keys contract (merge-binding).
     payload = {
         "schema_version": ss.SHIP_MANIFEST_SCHEMA_VERSION,
         "source_branch": "autopilot/work",
@@ -343,7 +359,7 @@ def test_manifest_malformed_source_sha_raises(tmp_path, bad_sha):
     import json
 
     # A present-but-malformed source_sha (empty / non-hex / too short / uppercase) must
-    # fail closed — the SHA binds the deferred P2.2 merge to the exact gated commit.
+    # fail closed — the SHA binds live/deferred merge to the exact gated commit.
     payload = {
         "schema_version": ss.SHIP_MANIFEST_SCHEMA_VERSION,
         "source_branch": "autopilot/work",
@@ -367,9 +383,16 @@ def test_manifest_valid_40_hex_source_sha_ok(tmp_path):
         "schema_version": ss.SHIP_MANIFEST_SCHEMA_VERSION,
         "source_branch": "autopilot/work",
         "source_sha": sha,
+        "target": "staging",
+        "base_branch": "autopilot/integration",
         "title": "t",
         "body": "ok 1",
         "day": "d1",
+        "gate_evidence_path": "reports/agent_loop/active/gate_evidence/T/evidence.json",
+        "gate_evidence_digest": "sha256:abc",
+        "protected_paths_changed": [],
+        "ci_evidence_ref": "ci://staging",
+        "review_gate_ref": "review://staging",
     }
     (tmp_path / ss.SHIP_MANIFEST_FILENAME).write_text(
         json.dumps(payload), encoding="utf-8"
@@ -383,18 +406,314 @@ def test_manifest_wrong_schema_version_raises(tmp_path):
     import json
 
     payload = {
-        "schema_version": 999,
+        "schema_version": 1,
         "source_branch": "autopilot/work",
         "source_sha": "0123456789abcdef0123456789abcdef01234567",
         "title": "t",
         "body": "ok 1",
         "day": "d1",
+        "target": "staging",
+        "base_branch": "autopilot/integration",
+        "gate_evidence_path": "evidence.json",
+        "gate_evidence_digest": "sha256:abc",
+        "protected_paths_changed": [],
+        "ci_evidence_ref": "ci://x",
+        "review_gate_ref": "review://x",
+        "supplemental_manifest": {"target": "main"},
     }
     (tmp_path / ss.SHIP_MANIFEST_FILENAME).write_text(
         json.dumps(payload), encoding="utf-8"
     )
     with pytest.raises(ValueError):
         ss.read_ship_manifest(tmp_path)
+
+
+def test_manifest_rejects_invalid_target(tmp_path):
+    import json
+
+    ss.write_ship_manifest(
+        tmp_path,
+        source_branch="autopilot/work",
+        source_sha="0123456789abcdef0123456789abcdef01234567",
+        title="t",
+        body="ok 1",
+        day="d1",
+    )
+    path = tmp_path / ss.SHIP_MANIFEST_FILENAME
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["target"] = "production"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError):
+        ss.read_ship_manifest(tmp_path)
+
+
+def test_manifest_rejects_non_list_protected_paths(tmp_path):
+    import json
+
+    ss.write_ship_manifest(
+        tmp_path,
+        source_branch="autopilot/work",
+        source_sha="0123456789abcdef0123456789abcdef01234567",
+        title="t",
+        body="ok 1",
+        day="d1",
+    )
+    path = tmp_path / ss.SHIP_MANIFEST_FILENAME
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["protected_paths_changed"] = "scripts/_staging_ship.py"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError):
+        ss.read_ship_manifest(tmp_path)
+
+
+def test_main_manifest_requires_main_base_and_external_refs(tmp_path):
+    import json
+
+    ss.write_ship_manifest(
+        tmp_path,
+        source_branch="autopilot/work",
+        source_sha="0123456789abcdef0123456789abcdef01234567",
+        title="t",
+        body="ok 1",
+        day="d1",
+        target="main",
+        base_branch="main",
+        gate_evidence_path="reports/agent_loop/active/gate_evidence/T/evidence.json",
+        gate_evidence_digest="sha256:abc",
+        ci_evidence_ref="github-checks://pr/1",
+        review_gate_ref="github-review://pr/1",
+    )
+    assert ss.read_ship_manifest(tmp_path)["target"] == "main"
+
+    path = tmp_path / ss.SHIP_MANIFEST_FILENAME
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["base_branch"] = "autopilot/integration"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError):
+        ss.read_ship_manifest(tmp_path)
+
+    payload["base_branch"] = "main"
+    payload["review_gate_ref"] = ""
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError):
+        ss.read_ship_manifest(tmp_path)
+
+
+def test_protected_path_globs_match_guard_surfaces_only():
+    changed = [
+        "Makefile",
+        "scripts/_staging_ship.py",
+        "scripts/claude-hooks/stop-ship.sh",
+        "docs/adr/0123-self-ship-main-gate.md",
+        "docs/readme.md",
+        "tests/test_unrelated.py",
+    ]
+    assert ss.detect_self_ship_protected_paths(changed) == [
+        "Makefile",
+        "docs/adr/0123-self-ship-main-gate.md",
+        "scripts/_staging_ship.py",
+        "scripts/claude-hooks/stop-ship.sh",
+    ]
+
+
+def test_guard_change_ack_accepts_codeowner_or_maintainer_bound_to_sha_and_paths():
+    paths = ["Makefile", "scripts/_staging_ship.py"]
+    codeowner_ack = ss.GuardChangeAck(
+        actor="alice",
+        actor_kind="human",
+        source_sha="0123456789abcdef0123456789abcdef01234567",
+        protected_paths=tuple(paths),
+        codeowner_approval=True,
+    )
+    maintainer_ack = ss.GuardChangeAck(
+        actor="bob",
+        actor_kind="human",
+        source_sha="0123456789abcdef0123456789abcdef01234567",
+        protected_paths=tuple(reversed(paths)),
+        permission="maintain",
+    )
+    assert ss.guard_change_ack_valid(
+        codeowner_ack,
+        source_sha="0123456789abcdef0123456789abcdef01234567",
+        protected_paths=paths,
+    )
+    assert ss.guard_change_ack_valid(
+        maintainer_ack,
+        source_sha="0123456789abcdef0123456789abcdef01234567",
+        protected_paths=paths,
+    )
+
+
+@pytest.mark.parametrize(
+    "ack",
+    [
+        None,
+        ss.GuardChangeAck(
+            actor="runner",
+            actor_kind="runner",
+            source_sha="0123456789abcdef0123456789abcdef01234567",
+            protected_paths=("Makefile",),
+            permission="admin",
+        ),
+        ss.GuardChangeAck(
+            actor="bot",
+            actor_kind="bot",
+            source_sha="0123456789abcdef0123456789abcdef01234567",
+            protected_paths=("Makefile",),
+            permission="admin",
+        ),
+        ss.GuardChangeAck(
+            actor="alice",
+            actor_kind="human",
+            source_sha="ffffffffffffffffffffffffffffffffffffffff",
+            protected_paths=("Makefile",),
+            permission="admin",
+        ),
+        ss.GuardChangeAck(
+            actor="alice",
+            actor_kind="human",
+            source_sha="0123456789abcdef0123456789abcdef01234567",
+            protected_paths=("scripts/_staging_ship.py",),
+            permission="admin",
+        ),
+        ss.GuardChangeAck(
+            actor="alice",
+            actor_kind="human",
+            source_sha="0123456789abcdef0123456789abcdef01234567",
+            protected_paths=("Makefile",),
+            permission="write",
+        ),
+        ss.GuardChangeAck(
+            actor="alice",
+            actor_kind="human",
+            source_sha="0123456789abcdef0123456789abcdef01234567",
+            protected_paths=("Makefile",),
+            permission="admin",
+            external=False,
+        ),
+    ],
+)
+def test_guard_change_ack_rejects_spoofed_or_unbound_evidence(ack):
+    assert not ss.guard_change_ack_valid(
+        ack,
+        source_sha="0123456789abcdef0123456789abcdef01234567",
+        protected_paths=["Makefile"],
+    )
+
+
+@pytest.mark.parametrize(
+    ("decision", "threads", "api_error", "expected"),
+    [
+        ("APPROVED", 0, False, True),
+        ("REVIEW_REQUIRED", 0, False, False),
+        ("CHANGES_REQUESTED", 0, False, False),
+        ("COMMENTED", 0, False, False),
+        (None, 0, False, False),
+        ("APPROVED", 1, False, False),
+        ("APPROVED", 0, True, False),
+    ],
+)
+def test_review_gate_clean_matrix(decision, threads, api_error, expected):
+    assert ss.review_gate_clean(decision, threads, api_error=api_error) is expected
+
+
+def _main_manifest(**overrides):
+    manifest = {
+        "schema_version": ss.SHIP_MANIFEST_SCHEMA_VERSION,
+        "source_branch": "autopilot/work",
+        "source_sha": "0123456789abcdef0123456789abcdef01234567",
+        "target": "main",
+        "base_branch": "main",
+        "title": "t",
+        "body": "ok 1",
+        "day": "d1",
+        "gate_evidence_path": "reports/agent_loop/active/gate_evidence/T/evidence.json",
+        "gate_evidence_digest": "sha256:abc",
+        "protected_paths_changed": [],
+        "ci_evidence_ref": "runner-claims-ci-green",
+        "review_gate_ref": "runner-claims-review-approved",
+    }
+    manifest.update(overrides)
+    return manifest
+
+
+def _main_gates(**overrides):
+    gates = {
+        "ci_green": True,
+        "review_decision": "APPROVED",
+        "unresolved_non_outdated_threads": 0,
+        "protection_verified": True,
+        "token_verified": True,
+        "pr_head_sha": "0123456789abcdef0123456789abcdef01234567",
+    }
+    gates.update(overrides)
+    return ss.MainGateSnapshot(**gates)
+
+
+@pytest.mark.parametrize(
+    ("gate_overrides", "decision"),
+    [
+        ({"ci_green": False}, "main-blocked-ci"),
+        ({"review_decision": "CHANGES_REQUESTED"}, "main-blocked-review"),
+        ({"unresolved_non_outdated_threads": 1}, "main-blocked-review"),
+        ({"protection_verified": False}, "main-blocked-protection"),
+        ({"token_verified": False}, "main-blocked-token"),
+        ({"pr_head_sha": "ffffffffffffffffffffffffffffffffffffffff"}, "main-blocked-source-mismatch"),
+    ],
+)
+def test_main_gate_simulation_fails_closed_from_promoter_resolved_facts(gate_overrides, decision):
+    # Manifest refs can point to evidence but cannot authorize merge by themselves.
+    result = ss.evaluate_main_promotion(_main_manifest(), _main_gates(**gate_overrides))
+    assert result.decision == decision
+
+
+def test_main_gate_requires_external_ack_for_protected_paths():
+    manifest = _main_manifest(protected_paths_changed=["scripts/_staging_ship.py"])
+    gates = _main_gates()
+    assert ss.evaluate_main_promotion(manifest, gates).decision == "main-blocked-guard-ack"
+    ack = ss.GuardChangeAck(
+        actor="maintainer",
+        actor_kind="human",
+        source_sha=manifest["source_sha"],
+        protected_paths=("scripts/_staging_ship.py",),
+        permission="admin",
+    )
+    assert ss.evaluate_main_promotion(manifest, gates, ack=ack).decision == "main-merge-allowed"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"start_infinite": True},
+        {"active_auto_loop_max_iterations": 0},
+        {"target_manifest_count": 2},
+        {"retry_loop_requested": True},
+        {"distinct_main_source_sha_count": 2},
+    ],
+)
+def test_main_blocks_unbounded_no_cap_modes(kwargs):
+    result = ss.evaluate_main_promotion(_main_manifest(), _main_gates(), **kwargs)
+    assert result.decision == "main-blocked-cap-deferred"
+
+
+def test_bounded_single_main_manifest_can_pass_without_cap_store():
+    result = ss.evaluate_main_promotion(
+        _main_manifest(),
+        _main_gates(),
+        target_manifest_count=1,
+        distinct_main_source_sha_count=1,
+        active_auto_loop_max_iterations=5,
+    )
+    assert result.decision == "main-merge-allowed"
+
+
+def test_promotion_lock_blocks_parallel_holder(tmp_path):
+    lock_path = tmp_path / "promotion.lock"
+    with ss.PromotionLock(lock_path):
+        with pytest.raises(ss.EnforcementNotVerified):
+            with ss.PromotionLock(lock_path):
+                pass
+    assert not lock_path.exists()
 
 
 # --- P2.0 D1 _RealGitOps.protection_verified with injected fake runner (US-2) -
@@ -460,9 +779,40 @@ def _protection_proc(
         body["required_status_checks"]["contexts"] = contexts
     if checks is not None:
         body["required_status_checks"]["checks"] = checks
-    import json
-
     return (["gh", "api"], _FakeProc(rc, json.dumps(body)))
+
+
+def _review_threads_proc(
+    *,
+    decision="APPROVED",
+    nodes=None,
+    has_next=False,
+    cursor=None,
+    rc=0,
+    raw=None,
+    errors=None,
+):
+    if raw is not None:
+        return (["gh", "api", "graphql"], _FakeProc(rc, raw))
+    body = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "reviewDecision": decision,
+                    "reviewThreads": {
+                        "nodes": [] if nodes is None else nodes,
+                        "pageInfo": {
+                            "hasNextPage": has_next,
+                            "endCursor": cursor,
+                        },
+                    },
+                }
+            }
+        }
+    }
+    if errors is not None:
+        body["errors"] = errors
+    return (["gh", "api", "graphql"], _FakeProc(rc, json.dumps(body)))
 
 
 def test_real_protection_verified_true_when_all_conditions_met():
@@ -751,27 +1101,288 @@ def test_real_protection_verified_url_encodes_slashed_branch():
     assert "autopilot/integration" not in api_call["argv"][2]
 
 
-# --- D1: merge orchestration is a deferred-to-P2.2 stub -----------------------
+# --- read-only GitHub GraphQL review gate resolver ---------------------------
 
-def test_real_open_pr_is_deferred_stub():
-    # D1 does not auto-merge: open_pr refuses rather than fakes.
+def test_real_review_gate_resolution_clean_reads_exact_graphql_fields():
+    runner = _FakeRunner([
+        _REPO_VIEW_OK,
+        _review_threads_proc(
+            nodes=[
+                {"isResolved": True, "isOutdated": False},
+                {"isResolved": False, "isOutdated": True},
+            ],
+        ),
+    ])
+    result = ss._RealGitOps(run=runner).resolve_review_gate("7")
+    assert result == ss.ReviewGateResolution(
+        review_decision="APPROVED",
+        unresolved_non_outdated_threads=0,
+        fetched_thread_pages=1,
+        api_error=False,
+    )
+    assert ss.review_gate_clean(
+        result.review_decision,
+        result.unresolved_non_outdated_threads,
+        api_error=result.api_error,
+    )
+    graphql_call = next(c for c in runner.calls if c["argv"][:3] == ["gh", "api", "graphql"])
+    query_arg = next(arg for arg in graphql_call["argv"] if arg.startswith("query="))
+    assert "reviewDecision" in query_arg
+    assert "reviewThreads" in query_arg
+    assert "isResolved" in query_arg
+    assert "isOutdated" in query_arg
+    assert "pageInfo" in query_arg
+
+
+def test_real_review_gate_resolution_counts_active_unresolved_threads():
+    runner = _FakeRunner([
+        _REPO_VIEW_OK,
+        _review_threads_proc(nodes=[{"isResolved": False, "isOutdated": False}]),
+    ])
+    result = ss._RealGitOps(run=runner).resolve_review_gate("7")
+    assert result.api_error is False
+    assert result.review_decision == "APPROVED"
+    assert result.unresolved_non_outdated_threads == 1
+    assert not ss.review_gate_clean(
+        result.review_decision,
+        result.unresolved_non_outdated_threads,
+        api_error=result.api_error,
+    )
+
+
+def test_real_review_gate_resolution_preserves_changes_requested_decision():
+    runner = _FakeRunner([
+        _REPO_VIEW_OK,
+        _review_threads_proc(decision="CHANGES_REQUESTED", nodes=[]),
+    ])
+    result = ss._RealGitOps(run=runner).resolve_review_gate("7")
+    assert result.api_error is False
+    assert result.review_decision == "CHANGES_REQUESTED"
+    assert result.unresolved_non_outdated_threads == 0
+    assert not ss.review_gate_clean(
+        result.review_decision,
+        result.unresolved_non_outdated_threads,
+        api_error=result.api_error,
+    )
+
+
+def test_real_review_gate_resolution_paginates_threads():
+    runner = _SeqRunner([
+        _REPO_VIEW_OK,
+        _review_threads_proc(
+            nodes=[{"isResolved": True, "isOutdated": False}],
+            has_next=True,
+            cursor="cursor-1",
+        ),
+        _review_threads_proc(nodes=[{"isResolved": False, "isOutdated": False}]),
+    ])
+    result = ss._RealGitOps(run=runner).resolve_review_gate("7", page_size=50, max_pages=2)
+    assert result == ss.ReviewGateResolution(
+        review_decision="APPROVED",
+        unresolved_non_outdated_threads=1,
+        fetched_thread_pages=2,
+        api_error=False,
+    )
+    graphql_calls = [c for c in runner.calls if c["argv"][:3] == ["gh", "api", "graphql"]]
+    assert len(graphql_calls) == 2
+    assert "-F" in graphql_calls[1]["argv"]
+    assert "after=cursor-1" in graphql_calls[1]["argv"]
+
+
+@pytest.mark.parametrize(
+    "responses",
+    [
+        [(["gh", "repo", "view"], _FakeProc(returncode=1, stdout=""))],
+        [_REPO_VIEW_OK, _review_threads_proc(rc=1, raw="")],
+        [_REPO_VIEW_OK, _review_threads_proc(raw="not-json")],
+        [_REPO_VIEW_OK, _review_threads_proc(errors=[{"message": "boom"}])],
+        [
+            _REPO_VIEW_OK,
+            _review_threads_proc(
+                raw='{"data": {"repository": {"pullRequest": {"reviewDecision": "APPROVED", '
+                '"reviewThreads": {"nodes": []}}}}}'
+            ),
+        ],
+        [
+            _REPO_VIEW_OK,
+            _review_threads_proc(nodes=[{"isResolved": "false", "isOutdated": False}]),
+        ],
+    ],
+)
+def test_real_review_gate_resolution_fails_closed_on_api_or_schema_errors(responses):
+    result = ss._RealGitOps(run=_FakeRunner(responses)).resolve_review_gate("7")
+    assert result.api_error is True
+    assert result.unresolved_non_outdated_threads is None
+    assert not ss.review_gate_clean(
+        result.review_decision,
+        result.unresolved_non_outdated_threads,
+        api_error=result.api_error,
+    )
+
+
+def test_real_review_gate_resolution_fails_closed_when_page_cap_exceeded():
+    runner = _SeqRunner([
+        _REPO_VIEW_OK,
+        _review_threads_proc(
+            nodes=[{"isResolved": True, "isOutdated": False}],
+            has_next=True,
+            cursor="cursor-1",
+        ),
+    ])
+    result = ss._RealGitOps(run=runner).resolve_review_gate("7", max_pages=1)
+    assert result.api_error is True
+    assert result.fetched_thread_pages == 1
+
+
+def test_real_review_gate_resolution_strips_ambient_gh_and_merge_token_env(monkeypatch):
+    monkeypatch.setenv("GH_REPO", "evil/other-repo")
+    monkeypatch.setenv("GH_TOKEN", "ambient-token")
+    monkeypatch.setenv("GITHUB_TOKEN", "ambient-ghs")
+    monkeypatch.setenv("GH_ENTERPRISE_TOKEN", "ambient-ghe")
+    monkeypatch.setenv("BIDMATE_SHIP_MERGE_TOKEN", "ship-token")
+    monkeypatch.setenv("PATH_KEEPME", "kept")
+    runner = _FakeRunner([
+        _REPO_VIEW_OK,
+        _review_threads_proc(nodes=[]),
+    ])
+    ss._RealGitOps(run=runner).resolve_review_gate("7")
+    assert runner.calls
+    for call in runner.calls:
+        env = call["kwargs"].get("env")
+        assert env is not None
+        assert "GH_REPO" not in env
+        assert "GH_TOKEN" not in env
+        assert "GITHUB_TOKEN" not in env
+        assert "GH_ENTERPRISE_TOKEN" not in env
+        assert "BIDMATE_SHIP_MERGE_TOKEN" not in env
+        assert env.get("PATH_KEEPME") == "kept"
+
+
+# --- explicit live staging wiring -------------------------------------------
+
+class _SeqRunner:
+    """Sequential runner for commands that repeat the same gh prefix."""
+
+    def __init__(self, responses: list[tuple[list[str], _FakeProc]]):
+        self._responses = list(responses)
+        self.calls: list[dict] = []
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append({"argv": list(argv), "kwargs": kwargs})
+        for idx, (prefix, proc) in enumerate(self._responses):
+            if list(argv)[: len(prefix)] == prefix:
+                self._responses.pop(idx)
+                return proc
+        return _FakeProc(returncode=1, stdout="")
+
+
+def test_real_open_pr_requires_separated_merge_token(monkeypatch):
+    monkeypatch.delenv("BIDMATE_SHIP_MERGE_TOKEN", raising=False)
     ops = ss._RealGitOps(run=_FakeRunner([]))
     with pytest.raises(ss.EnforcementNotVerified):
         ops.open_pr(source="autopilot/work", base="autopilot/integration", title="t", body="ok 1")
 
 
-def test_real_merge_is_deferred_stub():
-    ops = ss._RealGitOps(run=_FakeRunner([]))
+def test_real_open_pr_reuses_existing_open_pr_and_sanitizes_mutation_env(monkeypatch):
+    monkeypatch.setenv("BIDMATE_SHIP_MERGE_TOKEN", "ship-token")
+    monkeypatch.setenv("GH_TOKEN", "ambient-token")
+    monkeypatch.setenv("GITHUB_TOKEN", "ambient-ghs")
+    monkeypatch.setenv("GH_REPO", "evil/repo")
+    runner = _FakeRunner([
+        (
+            ["gh", "pr", "view"],
+            _FakeProc(0, '{"number": 7, "baseRefName": "autopilot/integration", "state": "OPEN"}'),
+        )
+    ])
+    ops = ss._RealGitOps(run=runner)
+    assert ops.open_pr(
+        source="autopilot/work",
+        base="autopilot/integration",
+        title="t",
+        body="ok 1",
+    ) == "7"
+    call = runner.calls[0]
+    env = call["kwargs"]["env"]
+    assert env["GH_TOKEN"] == "ship-token"
+    assert "GITHUB_TOKEN" not in env
+    assert "GH_REPO" not in env
+    assert "BIDMATE_SHIP_MERGE_TOKEN" not in env
+
+
+def test_real_open_pr_creates_then_re_reads_bound_pr(monkeypatch):
+    monkeypatch.setenv("BIDMATE_SHIP_MERGE_TOKEN", "ship-token")
+    runner = _SeqRunner([
+        (["gh", "pr", "view"], _FakeProc(1, "")),
+        (["gh", "pr", "create"], _FakeProc(0, "https://github.example/pr/7\n")),
+        (
+            ["gh", "pr", "view"],
+            _FakeProc(0, '{"number": 7, "baseRefName": "autopilot/integration", "state": "OPEN"}'),
+        ),
+    ])
+    ops = ss._RealGitOps(run=runner)
+    assert ops.open_pr(
+        source="autopilot/work",
+        base="autopilot/integration",
+        title="t",
+        body="ok 1",
+    ) == "7"
+    create_call = next(c for c in runner.calls if c["argv"][:3] == ["gh", "pr", "create"])
+    assert "--head" in create_call["argv"]
+    assert "--base" in create_call["argv"]
+    assert "--no-maintainer-edit" in create_call["argv"]
+
+
+def test_real_open_pr_blocks_existing_wrong_base(monkeypatch):
+    monkeypatch.setenv("BIDMATE_SHIP_MERGE_TOKEN", "ship-token")
+    runner = _FakeRunner([
+        (
+            ["gh", "pr", "view"],
+            _FakeProc(0, '{"number": 7, "baseRefName": "main", "state": "OPEN"}'),
+        )
+    ])
+    ops = ss._RealGitOps(run=runner)
+    with pytest.raises(ss.EnforcementNotVerified):
+        ops.open_pr(source="autopilot/work", base="autopilot/integration", title="t", body="ok 1")
+
+
+def test_real_required_checks_all_success_requires_non_empty_required_pass(monkeypatch):
+    monkeypatch.setenv("BIDMATE_SHIP_MERGE_TOKEN", "ship-token")
+    runner = _FakeRunner([
+        (
+            ["gh", "pr", "checks"],
+            _FakeProc(0, '[{"name": "staging-self-ship-guard", "bucket": "pass", "state": "SUCCESS"}]'),
+        )
+    ])
+    assert ss._RealGitOps(run=runner).required_checks_all_success("7") is True
+    checks_call = runner.calls[0]["argv"]
+    assert "--required" in checks_call
+
+
+@pytest.mark.parametrize("stdout", ["[]", '[{"name": "ci", "bucket": "pending"}]', "not-json"])
+def test_real_required_checks_all_success_fails_closed(monkeypatch, stdout):
+    monkeypatch.setenv("BIDMATE_SHIP_MERGE_TOKEN", "ship-token")
+    runner = _FakeRunner([(["gh", "pr", "checks"], _FakeProc(0, stdout))])
+    assert ss._RealGitOps(run=runner).required_checks_all_success("7") is False
+
+
+def test_real_merge_requires_match_head_commit_and_never_uses_admin_or_delete(monkeypatch):
+    monkeypatch.setenv("BIDMATE_SHIP_MERGE_TOKEN", "ship-token")
+    runner = _FakeRunner([(["gh", "pr", "merge"], _FakeProc(0, ""))])
+    ops = ss._RealGitOps(run=runner)
     with pytest.raises(ss.EnforcementNotVerified):
         ops.merge("7")
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    ops.merge("7", match_head_commit=sha)
+    argv = runner.calls[-1]["argv"]
+    assert argv[:4] == ["gh", "pr", "merge", "7"]
+    assert "--squash" in argv
+    assert "--match-head-commit" in argv
+    assert sha in argv
+    assert "--admin" not in argv
+    assert "--delete-branch" not in argv
 
 
-def test_real_required_checks_is_deferred_stub_returns_false():
-    ops = ss._RealGitOps(run=_FakeRunner([]))
-    assert ops.required_checks_all_success("7") is False
-
-
-# --- D1 main() verify-and-refuse harness (NEVER merges) -----------------------
+# --- default CLI verify-and-refuse plus explicit live staging -----------------
 
 def test_cli_blocks_on_user_with_no_manifest_and_no_source(monkeypatch, tmp_path, capsys):
     # No manifest AND no --source => still rc 2 with the "no ship manifest" message.
@@ -807,10 +1418,9 @@ def test_cli_no_manifest_no_source_still_runs_live_protection_check(monkeypatch,
     assert "blocked-on-user: no ship manifest" in err
 
 
-def test_cli_blocks_on_user_with_manifest_present_defers_to_p2_2(monkeypatch, tmp_path, capsys):
-    # With a manifest present (cap store / merge token NOT required in D1), main()
-    # LIVE-verifies protection (False via injected fake runner) then refuses, citing
-    # P2.2. It must NEVER merge.
+def test_cli_blocks_on_user_with_manifest_present_without_execute_flag(monkeypatch, tmp_path, capsys):
+    # With a manifest present, default mode LIVE-verifies protection then refuses.
+    # Without --execute-live-staging, the default path must NEVER merge.
     ss.write_ship_manifest(
         tmp_path,
         source_branch="autopilot/work",
@@ -844,13 +1454,12 @@ def test_cli_blocks_on_user_with_manifest_present_defers_to_p2_2(monkeypatch, tm
     assert rc == 2
     err = capsys.readouterr().err
     assert "blocked-on-user" in err
-    assert "P2.2" in err
-    assert "does not yet auto-merge" in err
+    assert "Default mode does not auto-merge" in err
 
 
 def test_cli_reports_enforcement_verified_then_still_refuses(monkeypatch, tmp_path, capsys):
-    # Even when protection IS verified live (True via injected fake runner), D1 STILL
-    # refuses to merge (rc 2) and cites P2.2 — it only verifies read-only.
+    # Even when protection IS verified live (True via injected fake runner), default mode STILL
+    # refuses to merge (rc 2) and points to the explicit live flag.
     ss.write_ship_manifest(
         tmp_path,
         source_branch="autopilot/work",
@@ -887,8 +1496,96 @@ def test_cli_reports_enforcement_verified_then_still_refuses(monkeypatch, tmp_pa
     assert rc == 2
     err = capsys.readouterr().err
     assert "is VERIFIED" in err
-    assert "P2.2" in err
-    assert "does not yet auto-merge" in err
+    assert "default mode does not auto-merge" in err
+    assert "--execute-live-staging" in err
+
+
+def test_cli_execute_live_staging_uses_explicit_flag_and_archives_manifest(monkeypatch, tmp_path, capsys):
+    ss.write_ship_manifest(
+        tmp_path,
+        source_branch="autopilot/work",
+        source_sha="0123456789abcdef0123456789abcdef01234567",
+        title="chore: t",
+        body="ok 1",
+        day="2026-05-31",
+    )
+    monkeypatch.setenv("BIDMATE_SHIP_MERGE_TOKEN", "ship-token")
+    runner = _SeqRunner([
+        _REPO_VIEW_OK,
+        _protection_proc(
+            contexts=[ss._REQUIRED_STAGING_CHECK],
+            force_enabled=False,
+            admins_enabled=True,
+            strict=True,
+        ),
+        _REPO_VIEW_OK,
+        _protection_proc(
+            contexts=[ss._REQUIRED_STAGING_CHECK],
+            force_enabled=False,
+            admins_enabled=True,
+            strict=True,
+        ),
+        (
+            ["gh", "pr", "view"],
+            _FakeProc(0, '{"number": 7, "baseRefName": "autopilot/integration", "state": "OPEN"}'),
+        ),
+        (
+            ["gh", "pr", "checks"],
+            _FakeProc(0, '[{"name": "staging-self-ship-guard", "bucket": "pass", "state": "SUCCESS"}]'),
+        ),
+        (["gh", "pr", "merge"], _FakeProc(0, "")),
+    ])
+    monkeypatch.setattr(ss.subprocess, "run", runner)
+
+    rc = ss.main([
+        "--manifest-dir",
+        str(tmp_path),
+        "--state-dir",
+        str(tmp_path),
+        "--execute-live-staging",
+    ])
+
+    assert rc == 0
+    assert not (tmp_path / ss.SHIP_MANIFEST_FILENAME).exists()
+    assert (tmp_path / ss.SHIP_MANIFEST_CONSUMED).exists()
+    err = capsys.readouterr().err
+    assert "staging-merged" in err
+    merge_call = next(c for c in runner.calls if c["argv"][:3] == ["gh", "pr", "merge"])
+    assert "--match-head-commit" in merge_call["argv"]
+    assert "0123456789abcdef0123456789abcdef01234567" in merge_call["argv"]
+    assert "--admin" not in merge_call["argv"]
+    assert "--delete-branch" not in merge_call["argv"]
+
+
+def test_cli_execute_live_staging_requires_source_sha(monkeypatch, tmp_path, capsys):
+    runner = _SeqRunner([
+        _REPO_VIEW_OK,
+        _protection_proc(
+            contexts=[ss._REQUIRED_STAGING_CHECK],
+            force_enabled=False,
+            admins_enabled=True,
+            strict=True,
+        ),
+    ])
+    monkeypatch.setattr(ss.subprocess, "run", runner)
+    rc = ss.main([
+        "--source",
+        "autopilot/work",
+        "--title",
+        "t",
+        "--body",
+        "ok 1",
+        "--day",
+        "2026-05-31",
+        "--manifest-dir",
+        str(tmp_path),
+        "--state-dir",
+        str(tmp_path),
+        "--execute-live-staging",
+    ])
+    assert rc == 2
+    assert "requires manifest source_sha or --source-sha" in capsys.readouterr().err
+    assert not any(c["argv"][:3] == ["gh", "pr", "merge"] for c in runner.calls)
 
 
 def test_cli_does_not_consume_manifest(monkeypatch, tmp_path, capsys):
@@ -934,7 +1631,7 @@ def test_cli_returns_2_no_traceback_when_gh_unavailable(monkeypatch, tmp_path, c
     assert rc == 2
     err = capsys.readouterr().err
     assert "NOT verified" in err
-    assert "P2.2" in err
+    assert "Default mode does not auto-merge" in err
 
 
 def test_cli_blocks_on_kill_switch(monkeypatch, tmp_path, capsys):

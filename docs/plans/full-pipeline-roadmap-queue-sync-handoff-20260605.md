@@ -1,9 +1,9 @@
 # Full Pipeline Roadmap Queue Sync Handoff
 
 - **Date:** 2026-06-05
-- **Source PRD:** [`../../.omx/plans/prd-full-pipeline-experiment-roadmap-20260605.md`](../../.omx/plans/prd-full-pipeline-experiment-roadmap-20260605.md)
-- **Test spec:** [`../../.omx/plans/test-spec-full-pipeline-experiment-roadmap-20260605.md`](../../.omx/plans/test-spec-full-pipeline-experiment-roadmap-20260605.md)
-- **Ultragoal dedupe evidence:** [`../../.omx/ultragoal/G002-full-pipeline-roadmap-dedupe-map.md`](../../.omx/ultragoal/G002-full-pipeline-roadmap-dedupe-map.md)
+- **Source PRD:** `../../.omx/plans/prd-full-pipeline-experiment-roadmap-20260605.md` (local OMX artifact; not tracked in git)
+- **Test spec:** `../../.omx/plans/test-spec-full-pipeline-experiment-roadmap-20260605.md` (local OMX artifact; not tracked in git)
+- **Ultragoal dedupe evidence:** `../../.omx/ultragoal/G002-full-pipeline-roadmap-dedupe-map.md` (local OMX artifact; not tracked in git)
 - **Related queue:** [`../../tasks/queue.md`](../../tasks/queue.md)
 - **Status:** handoff draft; queue IDs not assigned in this dirty worktree.
 
@@ -12,7 +12,7 @@
 Apply the full-pipeline roadmap as **symbolic task drafts** first. Do not add new
 canonical `T-*` rows in this handoff because the current worktree already has a
 relevant dirty `T-2026-0081` parser-roadmap append while
-[`T-2026-0080-queue-backlog-roadmap-handoff.md`](T-2026-0080-queue-backlog-roadmap-handoff.md)
+`T-2026-0080-queue-backlog-roadmap-handoff.md` (draft artifact not tracked in this tree)
 separately drafts `T-2026-0080..0088` for a different queue sync.
 
 This preserves the user's intent—"try every non-dominated lane and find the
