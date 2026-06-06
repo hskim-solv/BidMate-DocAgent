@@ -129,11 +129,10 @@ def normalize_regions(value: Any) -> list[dict[str, Any]]:
 def normalize_page_span(value: Any, regions: list[dict[str, Any]]) -> list[int] | None:
     if isinstance(value, list) and len(value) == 2:
         try:
-            if isinstance(value[0], bool) or isinstance(value[1], bool):
+            start = _coerce_page_number(value[0])
+            end = _coerce_page_number(value[1])
+            if start is None or end is None:
                 raise TypeError
-            start, end = int(value[0]), int(value[1])
-            if start <= 0 or end <= 0:
-                raise ValueError
             return [min(start, end), max(start, end)]
         except (TypeError, ValueError):
             pass

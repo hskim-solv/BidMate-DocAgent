@@ -128,6 +128,10 @@ def test_normalize_page_span_rejects_nonpositive_explicit_pair() -> None:
     assert normalize_page_span([-1, 3], []) is None
 
 
+def test_normalize_page_span_rejects_float_explicit_pair() -> None:
+    assert normalize_page_span([1.9, 3.1], []) is None
+
+
 def test_normalize_page_span_falls_back_to_region_min_max() -> None:
     regions = [{"page_number": 7}, {"page_number": 3}, {"page_number": 5}]
     assert normalize_page_span(None, regions) == [3, 7]
