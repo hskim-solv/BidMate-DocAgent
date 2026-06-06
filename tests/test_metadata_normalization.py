@@ -94,6 +94,12 @@ def test_normalize_regions_coerces_numeric_string_page_number() -> None:
     assert out == [{"page_number": 3, "bbox": None}]
 
 
+def test_normalize_regions_rejects_nonpositive_page_numbers() -> None:
+    out = normalize_regions([{"page_number": 0}, {"page_number": -2}])
+    assert out == [{"bbox": None}, {"bbox": None}]
+    assert all("page_number" not in region for region in out)
+
+
 # --- normalize_page_span ---
 
 
@@ -115,6 +121,11 @@ def test_normalize_page_span_rejects_boolean_explicit_pair() -> None:
 
 def test_normalize_page_span_rejects_false_explicit_pair() -> None:
     assert normalize_page_span([False, 3], []) is None
+
+
+def test_normalize_page_span_rejects_nonpositive_explicit_pair() -> None:
+    assert normalize_page_span([0, 3], []) is None
+    assert normalize_page_span([-1, 3], []) is None
 
 
 def test_normalize_page_span_falls_back_to_region_min_max() -> None:
@@ -151,6 +162,13 @@ def test_normalize_page_span_uses_numeric_string_region_pages() -> None:
     assert normalize_page_span(None, [{"page_number": "3"}, {"page_number": 5}]) == [
         3,
         5,
+    ]
+
+
+def test_normalize_page_span_ignores_nonpositive_region_pages() -> None:
+    assert normalize_page_span(None, [{"page_number": 0}, {"page_number": -1}, {"page_number": 3}]) == [
+        3,
+        3,
     ]
 
 

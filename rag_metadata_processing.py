@@ -80,12 +80,13 @@ def _is_integer_page_number(value: Any) -> bool:
 
 def _coerce_page_number(value: Any) -> int | None:
     if _is_integer_page_number(value):
-        return value
+        return value if value > 0 else None
     if isinstance(value, str):
         try:
-            return int(value)
+            page_number = int(value)
         except ValueError:
             return None
+        return page_number if page_number > 0 else None
     return None
 
 
@@ -131,6 +132,8 @@ def normalize_page_span(value: Any, regions: list[dict[str, Any]]) -> list[int] 
             if isinstance(value[0], bool) or isinstance(value[1], bool):
                 raise TypeError
             start, end = int(value[0]), int(value[1])
+            if start <= 0 or end <= 0:
+                raise ValueError
             return [min(start, end), max(start, end)]
         except (TypeError, ValueError):
             pass
