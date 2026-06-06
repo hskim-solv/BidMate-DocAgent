@@ -78,6 +78,17 @@ def _is_integer_page_number(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _coerce_page_number(value: Any) -> int | None:
+    if _is_integer_page_number(value):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
 def metadata_tokens(text: str) -> list[str]:
     tokens = []
     for match in TOKEN_RE.finditer(unicodedata.normalize("NFC", text)):
@@ -96,8 +107,9 @@ def normalize_regions(value: Any) -> list[dict[str, Any]]:
             continue
         region: dict[str, Any] = {}
         page_number = item.get("page_number")
-        if _is_integer_page_number(page_number):
-            region["page_number"] = page_number
+        coerced_page_number = _coerce_page_number(page_number)
+        if coerced_page_number is not None:
+            region["page_number"] = coerced_page_number
         elif page_number is None:
             region["page_number"] = None
         bbox = item.get("bbox")
@@ -123,9 +135,9 @@ def normalize_page_span(value: Any, regions: list[dict[str, Any]]) -> list[int] 
         except (TypeError, ValueError):
             pass
     page_numbers = [
-        int(region["page_number"])
+        page_number
         for region in regions
-        if _is_integer_page_number(region.get("page_number"))
+        if (page_number := _coerce_page_number(region.get("page_number"))) is not None
     ]
     if not page_numbers:
         return None

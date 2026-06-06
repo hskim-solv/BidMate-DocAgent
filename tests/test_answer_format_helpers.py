@@ -171,7 +171,7 @@ def test_make_citation_preserves_empty_region_dict_placeholder() -> None:
     assert "page_span" not in citation
 
 
-def test_make_citation_ignores_string_region_page_number_for_span() -> None:
+def test_make_citation_coerces_string_region_page_number_for_span() -> None:
     citation = make_citation({
         "doc_id": "rfp-001",
         "chunk_id": "chunk-7",
@@ -179,8 +179,11 @@ def test_make_citation_ignores_string_region_page_number_for_span() -> None:
         "metadata": {"citation_basis": "source_pdf"},
     })
 
-    assert citation["regions"] == [{"bbox": [0.1, 0.2, 0.3, 0.4]}]
-    assert "page_span" not in citation
+    assert citation["regions"] == [
+        {"page_number": 3, "bbox": [0.1, 0.2, 0.3, 0.4]}
+    ]
+    assert citation["page_span"] == [3, 3]
+    assert citation["citation_label"] == "원본 PDF p.3"
 
 
 def test_make_citation_preserves_canonical_pdf_metadata_and_label() -> None:
