@@ -74,6 +74,10 @@ STRICT_METADATA_CONFIDENCE = 0.90
 REDUCED_METADATA_CONFIDENCE = 0.70
 
 
+def _is_integer_page_number(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def metadata_tokens(text: str) -> list[str]:
     tokens = []
     for match in TOKEN_RE.finditer(unicodedata.normalize("NFC", text)):
@@ -92,7 +96,7 @@ def normalize_regions(value: Any) -> list[dict[str, Any]]:
             continue
         region: dict[str, Any] = {}
         page_number = item.get("page_number")
-        if isinstance(page_number, int):
+        if _is_integer_page_number(page_number):
             region["page_number"] = page_number
         elif page_number is None:
             region["page_number"] = None
@@ -112,6 +116,8 @@ def normalize_regions(value: Any) -> list[dict[str, Any]]:
 def normalize_page_span(value: Any, regions: list[dict[str, Any]]) -> list[int] | None:
     if isinstance(value, list) and len(value) == 2:
         try:
+            if isinstance(value[0], bool) or isinstance(value[1], bool):
+                raise TypeError
             start, end = int(value[0]), int(value[1])
             return [min(start, end), max(start, end)]
         except (TypeError, ValueError):
@@ -119,7 +125,7 @@ def normalize_page_span(value: Any, regions: list[dict[str, Any]]) -> list[int] 
     page_numbers = [
         int(region["page_number"])
         for region in regions
-        if isinstance(region.get("page_number"), int)
+        if _is_integer_page_number(region.get("page_number"))
     ]
     if not page_numbers:
         return None
