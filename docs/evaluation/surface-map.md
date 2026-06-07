@@ -26,6 +26,7 @@ agent gate behavior is [Agent-Gated RFP Evaluation Loop](./agent-gated-rfp-eval-
 |---|---|---|---|---|---|
 | Public fixture smoke | `eval/fixtures/smoke_rfp/raw/`, `eval/config.yaml` | CI wiring, schema, deterministic regression, latency SLO | `make smoke`, `make harness-smoke`, `python3 eval/run_eval.py --index_dir data/index --output_dir reports --config eval/config.yaml` | raw run은 local/generated, small fixture는 commit 가능 | "eval harness가 동작한다", "regression guard 통과" |
 | Public synthetic benchmark | `data/eval/benchmark/`, `configs/eval/benchmark_naive_rag_v1.yaml` | controlled failure discovery, ablation setup | `python3 eval/naive_rag/validate_benchmark_dataset.py --config configs/eval/benchmark_naive_rag_v1.yaml --report reports/benchmark/naive_rag_v1_validation.json`, `python3 -m eval.naive_rag.benchmark --config configs/eval/benchmark_naive_rag_v1.yaml` | synthetic corpus/config/gold는 public; generated run artifacts는 local | "synthetic v1에서 failure mode X 관측" |
+| Parser element micro-eval | `data/private/real100_v2/parser_element_stream/`, `reports/parser_candidate_eval/parser-element-micro-eval-*/retrieval_smoke.aggregate.json`, `data/private/real100_v2/parser_element_micro_eval/parser-element-12doc-expected-facts.json` | parser element stream wiring/searchability regression for metadata/OCR/table/text-layer elements and path-alias scoring ([ADR 0102](../adr/0102-parser-element-micro-eval-wiring-surface.md)) | `python3 scripts/run_parser_element_stream_retrieval_smoke.py --element-stream data/private/real100_v2/parser_element_stream/parser-element-stream-12doc-routing-v2-20260605T092518Z/element_stream.json --queries-json data/private/real100_v2/parser_element_micro_eval/parser-element-12doc-expected-facts.json --run-id parser-element-micro-eval-12doc-routing-v2-samehit-20260607T090346Z --top-k 6`, `python3 scripts/validate_parser_element_micro_eval_surface.py` | raw index/chunk text local-only under `data/private/real100_v2/`; reviewer aggregate is textless query-name/hash metrics | "parser element stream wiring/searchability did/did not regress"; not parser/OCR quality or real100_v2 performance |
 | Private real-eval | `data/private/real100_v2/real_config_v2.local.yaml`, private v2 corpus/index, `reports/real100_v2/` aggregate outputs | real RFP aggregate evidence, tiered v2 baseline, paired delta, opt-in judge aggregate | `make real-eval-v2-check`, `make real-eval-v2-inventory`, `make real-eval-v2-guard`, `make real-eval-v2-chroma`, `make real-eval-v2-chroma-llm`, `make real-eval-v2-judge`, `make real-eval-v2-ragas-judge`, `make real-eval-v2-rationality-judge` | raw/per-case local-only; allowlisted aggregate-only artifact만 commit | "private real100_v2 aggregate에서 delta X, provenance Y" |
 | PR fixture eval | `.github/workflows/pr-eval.yml` | PR마다 public fixture delta와 tests 검증 | GitHub Actions `PR Eval Delta` | PR comment/check only | "CI smoke delta passed/failed" |
 | Slow tests | `pytest -m slow`, `.github/workflows/slow-tests.yml` | real-model/full-corpus risk 확인 | `PYTEST_ADDOPTS="-m slow" bash scripts/test.sh` | generated outputs local | "slow gate passed on date/SHA" |
@@ -87,6 +88,26 @@ Naive RAG local private runner 경계:
 - provenance 없는 headline metric.
 - 같은 config/index가 아닌 run끼리 직접 비교.
 
+### Parser Element Micro-Eval
+
+[ADR 0102](../adr/0102-parser-element-micro-eval-wiring-surface.md)의 좁은
+wiring regression surface다. 성능 benchmark가 아니라 parser element stream 이
+검색 가능한 단위로 유지되는지 확인한다.
+
+허용:
+
+- metadata/OCR/table/text-layer element 가 검색 가능한 chunk/index 로 들어갔다.
+- path alias/copy scoring 이 row-strict 기본값과 source-sha alias opt-in 계약대로 동작한다.
+- aggregate report 가 query name/hash 기반 textless reviewer artifact 로 유지된다.
+- `parser_element_micro_eval_v0` validator 가 고정 query-set hash와 coverage 조건을 통과했다.
+
+금지:
+
+- PDF parser 품질, OCR 정확도, table structure quality, chart/diagram/VLM semantic extraction 품질 주장.
+- real100_v2 retrieval/answer quality 개선 주장.
+- PyMuPDF4LLM canonical citation parser 교체 또는 OCR/VLM default-on 정당화.
+- query-set hash drift 를 검증하지 않은 aggregate 비교.
+
 ### Operator-Skill Eval
 
 측정 대상은 모델이 아니라 **운영자(사람)의 코딩-에이전트 운영 능력**이다 ([ADR 0100](../adr/0100-operator-skill-eval-surface.md)). PR1 표면은 *경로* 경계(`agent-evals/README.md` exact-path 단 하나)만 확립하며, content aggregate-only 강제와 report 산출은 PR2/PR3 가 wire 한다.
@@ -111,6 +132,7 @@ Naive RAG local private runner 경계:
 | Regression fixed | failing-before/passing-after test or replay command, affected failure mode |
 | Benchmark improved | dataset id, config path, index provenance, command, metric with CI when available, artifact path |
 | Retrieval improved | `chunk_recall@k`, MRR/nDCG, same corpus/index build rules, semantic backend provenance if dense/hybrid, vector-store backend provenance |
+| Parser element wiring/searchability intact | ADR 0102 surface name, fixed query-set hash, element stream run id, aggregate path, `scripts/validate_parser_element_micro_eval_surface.py` output |
 | Answer quality improved | answer metric semantics, abstention/citation guardrails, private aggregate if real-world claim |
 | Latency improved | timed region, warm/cold split, stage latency, same hardware/process caveat |
 | Privacy-safe report | aggregate-only proof, forbidden fields absent, commit allowlist path |
@@ -144,6 +166,7 @@ Before accepting an eval/benchmark claim, verify:
 - CI/smoke result is not used as real-world performance proof.
 - synthetic result is not used as private real-eval substitute.
 - private aggregate has no raw case content or raw IDs.
+- parser element micro-eval claims cite ADR 0102 and do not overstate parser/OCR quality or real100_v2 performance.
 - regression guardrails are reported, not only headline improvements.
 
 ## Related Docs

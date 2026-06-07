@@ -54,6 +54,10 @@ class OcrUnavailable(RuntimeError):
     """Raised when an OCR provider cannot be loaded or executed."""
 
 
+class OcrResultShapeError(OcrUnavailable):
+    """Raised when an OCR provider returns an unsupported non-empty payload."""
+
+
 def _visual_page_metadata_source_group(artifact: dict[str, Any]) -> str:
     file_format = str(artifact.get("file_format") or "").strip() or "unknown"
     return f"{file_format}/visual_ingestion_v2"
@@ -356,6 +360,8 @@ def parse_pdf_artifact(
 
     text_block_count = 0
     ocr_block_count = 0
+    ocr_attempted = False
+    ocr_failures: list[dict[str, Any]] = []
     with pdf_doc:
         for page_index, page in enumerate(pdf_doc, start=1):
             width = float(page.rect.width)
@@ -364,12 +370,20 @@ def parse_pdf_artifact(
             text_block_count += len(blocks)
             page_text = "\n".join(block["text"] for block in blocks)
             if len(page_text.strip()) < PDF_MIN_TEXT_CHARS_FOR_OCR:
-                ocr_blocks, ocr_reason = ocr_pdf_page(page, page_index, width, height, doc_id, ocr_provider)
+                ocr_attempted = True
+                ocr_blocks, ocr_reason, ocr_detail = ocr_pdf_page(
+                    page, page_index, width, height, doc_id, ocr_provider
+                )
                 if ocr_blocks:
                     blocks.extend(ocr_blocks)
                     ocr_block_count += len(ocr_blocks)
-                elif not page_text.strip():
-                    add_reason(artifact, ocr_reason or "ocr_unavailable")
+                else:
+                    reason = ocr_reason or "ocr_empty_result"
+                    failure = {"page_number": page_index, "reason": reason}
+                    if ocr_detail:
+                        failure.update(ocr_detail)
+                    add_reason(artifact, reason)
+                    ocr_failures.append(failure)
             artifact["pages"].append(
                 {
                     "page_number": page_index,
@@ -380,10 +394,15 @@ def parse_pdf_artifact(
             )
 
     add_stage(artifact, "pdf_text_layer", "ok", {"blocks": text_block_count})
-    if ocr_block_count:
+    if ocr_block_count and not ocr_failures:
         add_stage(artifact, "ocr", "ok", {"blocks": ocr_block_count})
-    elif artifact["diagnostics"]["reasons"]:
-        add_stage(artifact, "ocr", "failed", {"reason": "ocr_unavailable"})
+    elif ocr_block_count:
+        add_stage(artifact, "ocr", "partial", {"blocks": ocr_block_count, "failures": ocr_failures})
+    elif ocr_failures:
+        reason = ocr_failures[-1]["reason"]
+        add_stage(artifact, "ocr", "failed", {"reason": reason, "failures": ocr_failures})
+    elif ocr_attempted:
+        add_stage(artifact, "ocr", "failed", {"reason": "ocr_empty_result"})
     else:
         add_stage(artifact, "ocr", "skipped", {"reason": "text_layer_sufficient"})
 
@@ -442,12 +461,12 @@ def ocr_pdf_page(
     page_height: float,
     doc_id: str,
     ocr_provider: OcrProvider | None,
-) -> tuple[list[dict[str, Any]], str | None]:
+) -> tuple[list[dict[str, Any]], str | None, dict[str, Any] | None]:
     try:
         import pymupdf  # type: ignore
         from PIL import Image
-    except Exception:
-        return [], "ocr_unavailable"
+    except Exception as exc:
+        return [], "ocr_unavailable", {"error": str(exc)}
 
     try:
         pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
@@ -463,11 +482,13 @@ def ocr_pdf_page(
         )
         scale_x = page_width / max(1.0, float(pixmap.width))
         scale_y = page_height / max(1.0, float(pixmap.height))
-        return [scale_block_bbox(block, scale_x, scale_y) for block in blocks], None
-    except OcrUnavailable:
-        return [], "ocr_unavailable"
-    except Exception:
-        return [], "ocr_failed"
+        return [scale_block_bbox(block, scale_x, scale_y) for block in blocks], None, None
+    except OcrResultShapeError as exc:
+        return [], "ocr_result_shape_error", {"error": str(exc)}
+    except OcrUnavailable as exc:
+        return [], "ocr_unavailable", {"error": str(exc)}
+    except Exception as exc:
+        return [], "ocr_failed", {"error": str(exc)}
 
 
 def parse_image_artifact(
@@ -499,6 +520,9 @@ def parse_image_artifact(
                 source="ocr_image",
                 ocr_provider=ocr_provider,
             )
+    except OcrResultShapeError as exc:
+        mark_failed(artifact, "ocr_result_shape_error", {"error": str(exc)})
+        return artifact
     except OcrUnavailable as exc:
         mark_failed(artifact, "ocr_unavailable", {"error": str(exc)})
         return artifact
@@ -653,8 +677,158 @@ def donut_ocr_provider(image: Any) -> str:
 _PADDLE_OCR_CACHE: dict[str, Any] = {}
 
 
+def _make_paddleocr_engine(PaddleOCR: Any, lang: str) -> Any:
+    """Create a PaddleOCR engine across the 2.x -> 3.x constructor split."""
+    attempts = [
+        (
+            "paddleocr_3x",
+            {
+                "lang": lang,
+                "device": "cpu",
+                "use_doc_orientation_classify": False,
+                "use_doc_unwarping": False,
+                "use_textline_orientation": True,
+            },
+        ),
+        ("paddleocr_3x_minimal", {"lang": lang, "device": "cpu"}),
+        (
+            "paddleocr_2x",
+            {
+                "use_angle_cls": True,
+                "lang": lang,
+                "use_gpu": False,
+            },
+        ),
+        (
+            "paddleocr_2x_with_log_flag",
+            {
+                "use_angle_cls": True,
+                "lang": lang,
+                "use_gpu": False,
+                "show_log": False,
+            },
+        ),
+    ]
+    errors: list[str] = []
+    for label, kwargs in attempts:
+        try:
+            return PaddleOCR(**kwargs)
+        except (TypeError, ValueError) as exc:
+            errors.append(f"{label}: {exc}")
+    raise OcrUnavailable("paddleocr_unavailable: constructor failed: " + " | ".join(errors))
+
+
+def _paddle_points_to_bbox(points: Any) -> list[float] | None:
+    if points is None:
+        return None
+    try:
+        if len(points) == 4:
+            try:
+                return [float(value) for value in points]
+            except (TypeError, ValueError):
+                pass
+        xs = [float(point[0]) for point in points]
+        ys = [float(point[1]) for point in points]
+    except (TypeError, ValueError, IndexError):
+        return None
+    if not xs or not ys:
+        return None
+    return [min(xs), min(ys), max(xs), max(ys)]
+
+
+def _paddleocr_payload(result: Any) -> dict[str, Any] | None:
+    """Return the serializable OCR payload from PaddleOCR 3.x result objects."""
+    json_attr = getattr(result, "json", None)
+    if json_attr is not None:
+        payload = json_attr() if callable(json_attr) else json_attr
+        if isinstance(payload, dict):
+            nested = payload.get("res")
+            return nested if isinstance(nested, dict) else payload
+    if isinstance(result, dict):
+        nested = result.get("res")
+        return nested if isinstance(nested, dict) else result
+    return None
+
+
+def _paddle_payload_sequence(payload: dict[str, Any], key: str) -> Any:
+    value = payload.get(key)
+    return [] if value is None else value
+
+
+def _paddleocr_raw_to_blocks(raw: Any) -> list[dict[str, Any]]:
+    """Normalize PaddleOCR 2.x and 3.x outputs into visual-ingestion blocks."""
+    blocks: list[dict[str, Any]] = []
+    if raw is None or (isinstance(raw, list) and not raw):
+        return blocks
+
+    recognized_payload = False
+    for result in raw if isinstance(raw, list) else [raw]:
+        payload = _paddleocr_payload(result)
+        if payload is None:
+            continue
+        if "rec_texts" not in payload:
+            raise OcrResultShapeError("unrecognized 3.x OCR payload")
+        recognized_payload = True
+        texts = _paddle_payload_sequence(payload, "rec_texts")
+        scores = _paddle_payload_sequence(payload, "rec_scores")
+        boxes = _paddle_payload_sequence(payload, "rec_boxes")
+        polys = payload.get("rec_polys")
+        if polys is None:
+            polys = _paddle_payload_sequence(payload, "dt_polys")
+        for index, text in enumerate(texts):
+            normalized_text = str(text or "").strip()
+            if not normalized_text:
+                continue
+            bbox = _paddle_points_to_bbox(boxes[index] if index < len(boxes) else None)
+            if bbox is None:
+                bbox = _paddle_points_to_bbox(polys[index] if index < len(polys) else None)
+            conf = scores[index] if index < len(scores) else None
+            block: dict[str, Any] = {"text": normalized_text}
+            if bbox is not None:
+                block["bbox"] = bbox
+            if conf is not None:
+                try:
+                    block["confidence"] = float(conf)
+                except (TypeError, ValueError):
+                    pass
+            blocks.append(block)
+    if blocks or recognized_payload:
+        return blocks
+
+    # PaddleOCR 2.x returns [[points, (text, confidence)], ...] per image.
+    lines = raw[0] if isinstance(raw, list) and raw and isinstance(raw[0], list) else raw
+    if not lines:
+        return blocks
+    recognized_2x_line = False
+    saw_nonempty_line = False
+    for line in lines:
+        if not line:
+            continue
+        saw_nonempty_line = True
+        try:
+            pts, (text, conf) = line
+        except (TypeError, ValueError):
+            continue
+        recognized_2x_line = True
+        normalized_text = str(text or "").strip()
+        if not normalized_text:
+            continue
+        block = {"text": normalized_text}
+        bbox = _paddle_points_to_bbox(pts)
+        if bbox is not None:
+            block["bbox"] = bbox
+        try:
+            block["confidence"] = float(conf)
+        except (TypeError, ValueError):
+            pass
+        blocks.append(block)
+    if blocks or recognized_2x_line or not saw_nonempty_line:
+        return blocks
+    raise OcrResultShapeError("unrecognized OCR result shape")
+
+
 def paddleocr_provider(image: Any) -> list[dict[str, Any]]:
-    """PaddleOCR PP-OCRv4 provider: returns structured text blocks for one page image.
+    """PaddleOCR classic provider: returns structured text blocks for one page image.
 
     Requires ``paddleocr`` and ``paddlepaddle`` (CPU-only install sufficient).
     Language is controlled by BIDMATE_PADDLE_LANG env var (default: 'korean').
@@ -673,29 +847,22 @@ def paddleocr_provider(image: Any) -> list[dict[str, Any]]:
     lang = os.environ.get("BIDMATE_PADDLE_LANG", "korean")
     cache_key = f"paddle_{lang}"
     if cache_key not in _PADDLE_OCR_CACHE:
-        _PADDLE_OCR_CACHE[cache_key] = PaddleOCR(
-            use_angle_cls=True, lang=lang, use_gpu=False, show_log=False
-        )
+        _PADDLE_OCR_CACHE[cache_key] = _make_paddleocr_engine(PaddleOCR, lang)
     engine = _PADDLE_OCR_CACHE[cache_key]
 
     img_array = np.array(image)
-    raw = engine.ocr(img_array, cls=True)
+    if hasattr(engine, "predict"):
+        try:
+            raw = engine.predict(img_array)
+        except TypeError:
+            raw = engine.ocr(img_array)
+    else:
+        try:
+            raw = engine.ocr(img_array, cls=True)
+        except TypeError:
+            raw = engine.ocr(img_array)
 
-    blocks: list[dict[str, Any]] = []
-    if not raw or raw[0] is None:
-        return blocks
-    for line in raw[0]:
-        if not line:
-            continue
-        pts, (text, conf) = line
-        xs = [float(p[0]) for p in pts]
-        ys = [float(p[1]) for p in pts]
-        blocks.append({
-            "text": text,
-            "bbox": [min(xs), min(ys), max(xs), max(ys)],
-            "confidence": float(conf),
-        })
-    return blocks
+    return _paddleocr_raw_to_blocks(raw)
 
 
 def get_ocr_provider(name: str | None = None) -> OcrProvider:
