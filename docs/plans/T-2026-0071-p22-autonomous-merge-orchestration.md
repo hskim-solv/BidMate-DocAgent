@@ -6,25 +6,37 @@
 - Related issue / PR: closed issue [#1703](https://github.com/hskim-solv/BidMate-DocAgent/issues/1703) (P2.2 SSoT); this plan PR closes [#1707](https://github.com/hskim-solv/BidMate-DocAgent/issues/1707); maintenance-gate refresh [#2152](https://github.com/hskim-solv/BidMate-DocAgent/issues/2152); builds on PR #1698 (D-minus), #1700 (codex-gate), #1702 (AR3 CODEOWNERS)
 - Related ADR: [0088](../adr/0088-opt-in-staging-self-ship-external-enforcement.md), [0090](../adr/0090-activate-staging-self-ship-lane-live-enforcement.md), [0091](../adr/0091-constitutional-guard-codeowners-trusted-signal.md) — all currently `proposed`. P2.2 needs **1 new ADR + 1 ADR 0090 amendment** (see Architecture Impact).
 - Created: 2026-06-01
-- Last updated: 2026-06-04
+- Last updated: 2026-06-07
 
-> Current status (2026-06-04): this plan is **not** an automatic
-> implementation-ready lane. Issue #1703 and the P2.2 follow-up set are closed,
-> but remaining work is gated on maintainer decisions, ADR reservation, and an
-> operator/live integration window. Resume only as a single-writer lane after
-> those gates are explicitly satisfied.
+> Current status (2026-06-07): this plan is **not** an automatic
+> implementation-ready lane. PR #2700 / issue #2699 shipped the formerly deferred
+> manifest handoff slice: schema v2 contract, opt-in `agent_loop.py` emission seam,
+> serial `make 시작-ship` wiring, and the read-only GitHub GraphQL review-gate
+> resolver. Remaining work is now gated on `SELF_IMMUTABLE_PATHS` SSoT/refusal
+> wiring, cap-store redesign/ADR reservation, and an operator/live integration
+> window. Resume only as a single-writer lane after those gates are explicitly
+> satisfied.
 
 > NOTE: ADR/issue numbers for the implementation PRs are NOT reserved by this plan. Reserve at ship time (`ls docs/adr/` + `gh pr list --search "ADR" --state open`). Inside this doc they appear as `ADR 00XX (reserve)`.
 
 ## Problem Statement
 
-P2.0 D-minus (ADR 0090) landed the **enforcement model + manifest contract**, but the lane `_staging_ship.py main()` always returns `rc 2 (blocked-on-user)`: `_RealGitOps.open_pr` / `merge` are honest stubs that `raise EnforcementNotVerified`, `required_checks_all_success` hard-returns `False`, and `agent_loop.py` never emits a manifest. The autonomous loop therefore cannot merge its own gated work into `autopilot/integration` — the entire point of the lane. The remaining work lives only in transcript + issue #1703; without a plan doc the next session re-discovers the seam boundaries from scratch.
+P2.0 D-minus (ADR 0090) landed the **enforcement model + manifest contract**. PR #2700 later landed the opt-in manifest emission seam and GraphQL review-gate resolver, so this plan no longer treats manifest handoff as missing. The lane still cannot autonomously complete staging/main promotion because `SELF_IMMUTABLE_PATHS`, a redesigned durable cap store, live staging e2e, and main promotion policy remain unresolved. Without this plan/queue sync, the next session re-discovers already-shipped seams and re-opens closed design questions.
 
 Reviewer-visible consequence if not done: the staging self-ship lane stays a permanently-refusing pre-flight harness, and three ADRs (0088/0090/0091) cannot move `proposed → accepted` because their P2.2 verification surfaces (live merge, token 403, cap+1 halt) never exist.
 
 ## Current Behavior
 
-State after D-minus (verified by reading source on this branch):
+State after #2700 (2026-06-07) plus historical D-minus notes:
+
+- **Built by PR #2700 / issue #2699**:
+  - `ship_manifest.json` schema v2 remains the contract; `agent_loop.py` now has an opt-in `_maybe_emit_active_ship_manifest(...)` seam.
+  - Emission is **not** merge authority: it is disabled by default, blocked under `--execute-ship`, requires serial `task_pool_size == 1`, exactly one `local-gate-complete` cycle, clean non-report working tree, issue-linked source branch, full 40-char HEAD SHA, and existing gate-evidence digest.
+  - `make 시작-ship` forces `ACTIVE_TASK_POOL=1` and sets `ACTIVE_AUTO_LOOP_EMIT_SHIP_MANIFEST=1`, while still stripping inherited `BIDMATE_SHIP_*` secrets before the loop sub-make.
+  - `_RealGitOps.resolve_review_gate(...)` now uses read-only GitHub GraphQL (`reviewDecision` + paginated unresolved/non-outdated review threads) and fails closed on API/schema/env errors.
+- **Still missing / gated**: `SELF_IMMUTABLE_PATHS` SSoT/refusal wiring, redesigned durable cap store, staging live e2e, and main promotion/source-binding policy.
+
+Historical D-minus snapshot retained for design context:
 
 - **`scripts/_staging_ship.py` (669 lines)** holds the full design already:
   - `StagingShipLane.ship()` (lines 368-402) is the **complete orchestration sequence**: ship-arm mutex → kill-switch → staging-target assert → force-push assert → data-boundary payload guard → `protection_verified` (LIVE) → daily-cap → `open_pr` → `required_checks_all_success` → `merge` → `record_merge`. Only the last three `GitOps` methods are stubbed.
@@ -34,12 +46,12 @@ State after D-minus (verified by reading source on this branch):
   - `DailyMergeCapCounter` (307-326) + `ImmutableCounterStore` Protocol (292-305) exist as **in-memory contracts only**. `__post_init__` refuses any store whose `loop_writable` is truthy. No file-backed implementation, no cross-worktree lock.
   - `BoundedFailureCounter` (270-289) is the bounded-lane T1 (limit 3).
   - `main()` (548-669) reads the manifest if present (else `--source`), runs cheap guards, runs the live protection pre-flight (always, even with no work — issue #1697 Fix 2), then **always returns 2**.
-- **`scripts/agent_loop.py` (~19k lines)**: `local-gate-complete` is set at **line 10747** (`cycle["completion_decision"] = "local-gate-complete"`). There is **no `_maybe_write_ship_manifest`** anywhere (ADR 0090 verification relies on that grep being empty). `strip_ship_secret_env` is already imported (line 36) and applied across all write/read/omc lanes (395, 13886, 14423, 14460, 15882 + the two turn modules).
+- **`scripts/agent_loop.py` historical note**: before #2700, `local-gate-complete` existed but there was no manifest-emission seam. After #2700, `_maybe_emit_active_ship_manifest(...)` exists and is opt-in/file-handoff only; `strip_ship_secret_env` still applies across runner lanes.
 - **`scripts/_ship_env.py`**: single 14-line leaf, `strip_ship_secret_env` deny-by-prefix `BIDMATE_SHIP_`. Already imported by `agent_loop.py`, `agent_loop_claude_turn.py`, `agent_loop_codex_turn.py`.
 - **`scripts/_governance.py`**: has `LOAD_BEARING_PATHS` (11 entries) + `THRESHOLDS`. **`SELF_IMMUTABLE_PATHS` does not exist in code** — it is only named in ADR 0090 / runbook prose.
 - **`scripts/run_codex_adversarial_precommit.py`** line 140: comment says the canonical `_ship_env.strip_ship_secret_env` helper lands on main; the inline `sanitized_env()` strip from #1700 is the AR1-dedup target (separate follow-up, not in this stack).
 - **`scripts/check_constitutional_review.py`** line 46: `PROTECTED_PATHS` already lists `scripts/_ship_env.py`. (CODEOWNERS parity test guards this.)
-- **`make 시작-ship`** runs the byte-identical `make 시작` loop with secrets `env -u`'d, then calls `_staging_ship.py --manifest-dir "$(ACTIVE_SHIP_STATE_DIR)"` as a post-step. No `BIDMATE_SHIP_MANIFEST_DIR` injected into the loop sub-make (emission deferred).
+- **`make 시작-ship`** now runs the normal `make 시작` loop with ship secrets stripped, `ACTIVE_TASK_POOL=1`, and `ACTIVE_AUTO_LOOP_EMIT_SHIP_MANIFEST=1`, then calls `_staging_ship.py --manifest-dir "$(ACTIVE_SHIP_STATE_DIR)"` as a post-step. This is a manifest file handoff only; live merge still requires the staging lane's explicit flags/token checks.
 
 ## Desired Behavior
 
@@ -61,7 +73,7 @@ Smallest useful end state, observable by command/artifact:
 
 ## Architecture Impact
 
-- Affected modules or docs: `scripts/_staging_ship.py` (live ops, cap store, poll, idempotency, serialization), `scripts/agent_loop.py` (manifest emission seam only), `scripts/_governance.py` (new `SELF_IMMUTABLE_PATHS`), `Makefile` (`시작-ship` injects `BIDMATE_SHIP_MANIFEST_DIR` into the loop sub-make for emission), `docs/operations/staging-self-ship.md` (move rows from deferred→built), `tasks/queue.md` (T-2026-0071 status), `tests/`.
+- Affected modules or docs: `scripts/_staging_ship.py` (live ops, cap store, poll, idempotency, serialization), `scripts/agent_loop.py` (manifest emission seam only), `scripts/_governance.py` (new `SELF_IMMUTABLE_PATHS`), `Makefile` (`시작-ship` opts in with `ACTIVE_AUTO_LOOP_EMIT_SHIP_MANIFEST=1` and `ACTIVE_AUTO_LOOP_SHIP_MANIFEST_DIR=$(ACTIVE_SHIP_STATE_DIR)`), `docs/operations/staging-self-ship.md` (move rows from deferred→built), `tasks/queue.md` (T-2026-0071 status), `tests`.
 - Affected contracts or invariants: manifest contract (extend, don't break); `GitOps` Protocol (`open_pr`/`merge`/`required_checks_all_success` go live); `ImmutableCounterStore` (`loop_writable=False` invariant on the new file store); 2-process privilege split; external-authority model.
 - Load-bearing paths: none of P2.2's files are in `LOAD_BEARING_PATHS` (that list is RAG-pipeline). But `_staging_ship.py`/`_ship_env.py`/`_governance.py`/the workflow/`.githooks/pre-commit` are in the **constitutional CODEOWNERS-protected set** (ADR 0091) — a stricter gate than load-bearing. Reviewer must treat any diff to these as security-sensitive.
 - ADR required: **YES — two decision artifacts.**
@@ -73,7 +85,7 @@ Smallest useful end state, observable by command/artifact:
 
 ## Affected Interfaces
 
-- CLI/API/config: new env `BIDMATE_SHIP_MERGE_TOKEN`, `BIDMATE_SHIP_CAP_STORE`, `BIDMATE_SHIP_CHECK_ATTEMPTS`, `BIDMATE_SHIP_CHECK_INTERVAL_SECONDS`, `BIDMATE_SHIP_MANIFEST_DIR` (loop-injected). All in the `BIDMATE_SHIP_*` stripped namespace.
+- CLI/API/config: new env `BIDMATE_SHIP_MERGE_TOKEN`, `BIDMATE_SHIP_CAP_STORE`, `BIDMATE_SHIP_CHECK_ATTEMPTS`, `BIDMATE_SHIP_CHECK_INTERVAL_SECONDS`; loop emission is controlled by `ACTIVE_AUTO_LOOP_EMIT_SHIP_MANIFEST` + `ACTIVE_AUTO_LOOP_SHIP_MANIFEST_DIR`. `BIDMATE_SHIP_*` remains the stripped secret/control namespace for the ship lane.
 - Input data: `<state-dir>/ship_manifest.json` (now loop-emitted with real `source_sha`).
 - Output artifacts: live PR into `autopilot/integration`; `<state-dir>/ship_manifest.json.consumed` after merge; cap-store file (counts only).
 - Docs/review surfaces: `docs/operations/staging-self-ship.md` built-vs-deferred table; Gate-3 runbook steps.
@@ -98,15 +110,15 @@ Recommended safe-start order is **PR-1 and PR-2 first** (both fully offline-test
 
 ### PR-1 — `agent_loop.py` manifest emission seam + Makefile wiring (issue unit 1; ADR 0090 amendment)
 
-> **⚠️ 2026-06-01: PR-4로 이동 (independent PR 아님).** D-minus(`EXECUTE_SHIP=0`)에서는 게이트 통과 시점에 커밋이 없어 `source_sha=HEAD`가 stale/무의미하다 — codex critical(freq 5/8) + runbook 유보 명시와 일치. seam은 실제 커밋이 생기는 live-merge 경로(PR-4)에서만 의미가 있으므로 거기서 함께 구현한다. 아래 Goal/Scope는 PR-4 구현 시 참조용으로 보존한다.
+> **✅ 2026-06-07: partial shipped in PR #2700 / issue #2699.** The seam is now a bounded file handoff, not a live merge: it emits only after one `local-gate-complete` cycle with serial task-pool, clean non-report tree, issue-linked branch, full HEAD SHA, and gate-evidence digest. The 2026-06-01 stale-SHA critique remains relevant for future live promotion, but it no longer means the manifest seam is wholly deferred. Below Goal/Scope is retained as historical design context; future work should start from #2700's `_maybe_emit_active_ship_manifest(...)`, not `_maybe_write_ship_manifest`.
 
-- Goal: Loop emits `<state-dir>/ship_manifest.json` bound to the real committed `source_sha` (HEAD of the gated commit) on `local-gate-complete`, only when `BIDMATE_SHIP_MANIFEST_DIR` is set (i.e. invoked from `make 시작-ship`).
-- Scope: add `_maybe_write_ship_manifest(...)` in `agent_loop.py`, called from the `local-gate-complete` block (line ~10747); it calls the existing `write_ship_manifest` contract. `Makefile` `시작-ship` injects `BIDMATE_SHIP_MANIFEST_DIR=$(ACTIVE_SHIP_STATE_DIR)` into the **loop** sub-make. ADR 0090 addendum section.
+- Goal: Loop emits `<state-dir>/ship_manifest.json` bound to the real committed `source_sha` (HEAD of the gated commit) on `local-gate-complete`, only when `ACTIVE_AUTO_LOOP_EMIT_SHIP_MANIFEST=1` with an explicit `ACTIVE_AUTO_LOOP_SHIP_MANIFEST_DIR` (i.e. invoked from `make 시작-ship`).
+- Scope after #2700: `_maybe_emit_active_ship_manifest(...)` in `agent_loop.py` is called after the local gate cycle and uses the existing `write_ship_manifest` contract. `Makefile` `시작-ship` opts into the seam by passing `ACTIVE_AUTO_LOOP_EMIT_SHIP_MANIFEST=1` and `ACTIVE_AUTO_LOOP_SHIP_MANIFEST_DIR=$(ACTIVE_SHIP_STATE_DIR)` to the **loop** sub-make. ADR 0090 follow-up text still needs to supersede the older empty-grep expectation.
 - Non-Goals: no PR open, no merge, no token, no cap store. Seam is no-op when env unset (default `make 시작` stays byte-identical).
 - Acceptance Criteria:
-  - [ ] `_maybe_write_ship_manifest` exists; `source_sha` = `git rev-parse HEAD` of the committed gated change (NOT stale working-tree HEAD), passing `_SHA_RE`.
-  - [ ] With `BIDMATE_SHIP_MANIFEST_DIR` unset, `make 시작` output byte-identical to origin/main (regression test) and no manifest written.
-  - [ ] ADR 0090 verification's old "grep `_maybe_write_ship_manifest` is empty" assertion is updated/superseded in the amendment (this PR intentionally makes that grep non-empty).
+  - [x] `_maybe_emit_active_ship_manifest(...)` exists in #2700; `source_sha` is full `git rev-parse HEAD` and the seam refuses dirty non-report trees.
+  - [x] Default `make 시작` path keeps emission disabled; `시작-ship` opts in and forces `ACTIVE_TASK_POOL=1`.
+  - [ ] Future ADR/update should supersede old verification text that expected no manifest emission seam.
 - Test strategy: unit test the seam (env-gated write/no-write); regression test on `make 시작` byte-identity; assert manifest round-trips through `read_ship_manifest`.
 - Risk: **`agent_loop.py` is deliberately EXCLUDED from the CODEOWNERS constitutional set** (ADR 0091, "too frequently edited") — so this PR does NOT trip the owner-review gate, which is correct. But it is the seam where a stale SHA = wrong-commit merge later; SHA derivation must be the committed SHA. Medium risk; high blast radius if SHA wrong.
 
@@ -187,11 +199,11 @@ Recommended safe-start order is **PR-1 and PR-2 first** (both fully offline-test
 
 ```bash
 # default-path preservation (every PR)
-make -n 시작            # byte-identical loop invocation; no BIDMATE_SHIP_MANIFEST_DIR
+make -n 시작            # byte-identical loop invocation; ACTIVE_AUTO_LOOP_EMIT_SHIP_MANIFEST defaults to 0
 bash scripts/test.sh    # full suite (CI gate)
 
 # seam intentionally present after PR-1 (inverts ADR 0090's empty-grep)
-grep -n "_maybe_write_ship_manifest" scripts/agent_loop.py
+grep -n "_maybe_emit_active_ship_manifest" scripts/agent_loop.py
 
 # cap-store + SELF_IMMUTABLE_PATHS after PR-2
 python3 -m pytest tests/test_staging_ship*.py -q
@@ -261,7 +273,7 @@ Attack first, in priority order:
 - Current status: plan drafted; awaiting maintainer review + ADR/issue number reservation
 - Decisions made: 6-PR stack, 1 new ADR + 0090 amendment, cap-store/seam offline-testable → safe-start first
 - Commands run: gh issue view 1703; read ADR 0088/0090/0091, _staging_ship.py, _ship_env.py, agent_loop.py grep, _governance.py, queue.md
-- Results: confirmed StagingShipLane.ship() + cap Protocol + manifest source_sha contract already exist; only GitOps stubs + file cap store + emission seam + SELF_IMMUTABLE_PATHS missing
+- Results: confirmed StagingShipLane.ship() + cap Protocol + manifest source_sha contract already exist; after #2700 the manifest emission seam also exists. Remaining missing pieces are GitOps/live e2e, redesigned durable cap store, and SELF_IMMUTABLE_PATHS refusal wiring.
 - Next safe command: reserve ADR number (ls docs/adr/ + gh pr list --search ADR --state open), then start PR-1 or PR-2 (both offline-testable, no branch-protection dependency)
 - Open questions: see Open Questions section (4 items)
 - Risks: PR-2 cross-worktree lock + PR-3 token leakage are the security crux; all _staging_ship.py-touching PRs need non-author CODEOWNERS approval
@@ -277,8 +289,8 @@ P2.2를 3개 worktree agent 동시 실행으로 착수했다가 거버넌스(cod
 - **verdict cache 정책 키** (#1710/#1713): codex verdict 캐시 키가 review policy(attempts/min_frequency/timeout)를 무시하던 버그 수정. codex가 잡은 `_policy_digest` 시그니처 + `os` 미정의 버그를 거쳐 머지.
 - **operator branch-protection + AR3** (CODEOWNERS code-owner review): `autopilot/integration` + `main` 양쪽에 required check(`staging-self-ship-guard`) + force-push deny + enforce_admins + require_code_owner_reviews 설정. `protection_verified` live 검증 VERIFIED.
 
-### 보류 (codex self-catch — 모두 정당)
-- **PR-1 manifest seam**: codex critical(freq 5/8) "no-ship 경로 stale `source_sha`" → PR-4(live merge)와 병합. 위 PR-1 섹션 노트 참조.
+### 보류 / 부분 해소 (codex self-catch — 모두 정당)
+- **PR-1 manifest seam**: 2026-06-01 stale-`source_sha` critique was valid for live promotion, but #2700 shipped a narrower file-handoff seam with clean-tree + gate-evidence + full-HEAD binding. Future live promotion must still re-check source binding at merge time.
 - **PR-2 cap store**: codex 5회 block(self-immutable 빈 리스트 우회 6/8, per-worktree 상대경로 카운터 4/8, day-key rotation 우회 4/8, public initializer reset 1/8) → 재설계.
 - **cascade DEFAULT_ATTEMPTS 8→3** (ADR 0066, #1709 철회): codex가 "load-bearing-only 트리거라 attempts를 낮추면 핵심 망라성 희생"으로 self-catch. env override가 안전한 경로.
 
@@ -307,7 +319,7 @@ P2.2 security-critical 작업은 **단일 writer lane**으로 진행해야 한�
 ### 재개 시 남은 것 (전부 maintainer 결정 / 운영 시점 대기)
 1. **Open Questions 4건** (위 §Open Questions) — ADR shape / PR-3 boundary / SLA counters / AR4 field set. **maintainer 결정 선행 필수**.
 2. **cap store 재설계** (위 §"cap store 재설계 방향" 5항, 1-lane 세션) — ADR 0093+ 예약.
-3. **manifest seam** — PR-4(live merge)와 병합.
+3. **SELF_IMMUTABLE_PATHS SSoT/refusal wiring** — #2700's `_ship_env.py` + manifest emission seam must be protected before expanding live authority.
 4. **live merge e2e** — integration 레인 운영 시점 (Gate-3 한계: 워크플로 `autopilot/**` 전용).
 
 다음 안전 명령: maintainer가 위 Open Questions 4건을 먼저 결정하고 integration 운영 창을 승인한 뒤, ADR 0093+ 번호 예약(`ls docs/adr/` + `gh pr list --search ADR --state open`)으로 재개한다. **병렬 worktree agent 금지 — 단일 writer lane** (#1719 교훈, 위 §).
