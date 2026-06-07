@@ -89,6 +89,12 @@ def test_normalize_regions_rejects_false_page_number() -> None:
     assert "page_number" not in out[0]
 
 
+def test_normalize_regions_rejects_float_page_number() -> None:
+    out = normalize_regions([{"page_number": 1.9}])
+    assert out == [{"bbox": None}]
+    assert "page_number" not in out[0]
+
+
 def test_normalize_regions_coerces_numeric_string_page_number() -> None:
     out = normalize_regions([{"page_number": "3"}])
     assert out == [{"page_number": 3, "bbox": None}]
