@@ -117,6 +117,10 @@ def test_normalize_page_span_coerces_explicit_string_pair() -> None:
     assert normalize_page_span(["5", "9"], []) == [5, 9]
 
 
+def test_normalize_page_span_rejects_decimal_string_explicit_pair() -> None:
+    assert normalize_page_span(["3.0", "4"], []) is None
+
+
 def test_normalize_page_span_sorts_explicit_pair() -> None:
     assert normalize_page_span([9, 5], []) == [5, 9]
 
