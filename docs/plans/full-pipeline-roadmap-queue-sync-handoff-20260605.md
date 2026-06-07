@@ -5,7 +5,7 @@
 - **Test spec:** `../../.omx/plans/test-spec-full-pipeline-experiment-roadmap-20260605.md` (local OMX artifact; not tracked in git)
 - **Ultragoal dedupe evidence:** `../../.omx/ultragoal/G002-full-pipeline-roadmap-dedupe-map.md` (local OMX artifact; not tracked in git)
 - **Related queue:** [`../../tasks/queue.md`](../../tasks/queue.md)
-- **Status:** handoff draft; queue IDs not assigned in this dirty worktree.
+- **Status:** namespace reconciled; `FP-*` drafts remain symbolic until PR #2710 resolves and the live queue state is re-read.
 
 ## Decision
 
@@ -30,6 +30,31 @@ queue-sync branch must verify:
 4. The branch/issue convention is satisfied before PR work starts.
 
 Until then, use the stable symbolic IDs below in plans and handoffs.
+
+## Queue Namespace Reconciliation — 2026-06-07
+
+Current tracked `origin/main` has **no canonical `T-2026-0080..0088` rows** in
+[`../../tasks/queue.md`](../../tasks/queue.md). The older
+`T-2026-0080-queue-backlog-roadmap-handoff.md` mentioned above was an untracked
+local draft, so it is not a canonical queue allocation.
+
+Open PR [#2710](https://github.com/hskim-solv/BidMate-DocAgent/pull/2710)
+currently owns the parser-roadmap namespace by adding `T-2026-0081` plus parser
+plans. Therefore:
+
+1. Do **not** create a competing `T-2026-0081` row from this full-pipeline
+   handoff.
+2. Do **not** backfill `T-2026-0080` merely to make numbering contiguous; gaps are
+   safer than changing ownership after an open PR has claimed `T-2026-0081`.
+3. Keep `FP-SYNC`, `FP-QE`, and `FP-GOV` symbolic until PR #2710 is either merged
+   or closed, then allocate the next canonical queue ID from the then-current
+   `tasks/queue.md` state.
+4. If PR #2710 changes the parser micro-eval ADR number or parser plan anchors,
+   update this handoff by rebase rather than creating a duplicate parser task.
+
+This resolves the namespace decision for this handoff: `T-2026-0080..0088` from
+the untracked local draft are explicitly non-canonical, while `T-2026-0081` is
+owned by PR #2710 until that PR resolves.
 
 ## Stage Matrix
 
@@ -147,12 +172,13 @@ Do not create default queue rows for these unless a later artifact changes the c
 
 ## Recommended Next Execution Order
 
-1. Resolve queue namespace (`T-2026-0081` parser append vs older `T-2026-0080..0088` handoff).
-2. Apply `FP-SYNC` on a clean issue/branch if queue mutation is desired.
-3. Promote `FP-QE` first, because it is the clearest uncovered P0 gap.
-4. Add or merge `FP-GOV` so later experiments cannot overclaim.
-5. Only then consider conditional lanes (`FP-INDEX-ELEMENT`, `FP-EVIDENCE-CONTRADICTION`) if existing tasks do not cover them.
-6. Use `FP-RESEARCH-PACKET` / `FP-RESEARCH-GOAL` per external-sensitive candidate family, not for the whole roadmap.
+1. Wait for PR #2710 to either merge or close, because it currently owns `T-2026-0081`.
+2. Re-read current `tasks/queue.md`; allocate the next `T-*` ID from live queue state without backfilling `T-2026-0080`.
+3. Apply `FP-SYNC` on a clean issue/branch if queue mutation is desired.
+4. Promote `FP-QE` first, because it is the clearest uncovered P0 gap.
+5. Add or merge `FP-GOV` so later experiments cannot overclaim.
+6. Only then consider conditional lanes (`FP-INDEX-ELEMENT`, `FP-EVIDENCE-CONTRADICTION`) if existing tasks do not cover them.
+7. Use `FP-RESEARCH-PACKET` / `FP-RESEARCH-GOAL` per external-sensitive candidate family, not for the whole roadmap.
 
 ## Verification for This Handoff
 
