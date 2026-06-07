@@ -123,6 +123,12 @@ def test_normalize_regions_rejects_nonpositive_page_numbers() -> None:
     assert all("page_number" not in region for region in out)
 
 
+def test_normalize_regions_rejects_whitespace_nonpositive_string_page_numbers() -> None:
+    out = normalize_regions([{"page_number": " 0 "}, {"page_number": "\t-2\n"}])
+    assert out == [{"bbox": None}, {"bbox": None}]
+    assert all("page_number" not in region for region in out)
+
+
 # --- normalize_page_span ---
 
 
