@@ -193,6 +193,13 @@ def test_normalize_page_span_uses_numeric_string_region_pages() -> None:
     ]
 
 
+def test_normalize_page_span_coerces_whitespace_string_region_pages() -> None:
+    assert normalize_page_span(None, [{"page_number": " 3 "}, {"page_number": "\t5\n"}]) == [
+        3,
+        5,
+    ]
+
+
 def test_normalize_page_span_ignores_decimal_string_region_pages() -> None:
     assert normalize_page_span(None, [{"page_number": "3.0"}, {"page_number": 5}]) == [
         5,
