@@ -100,6 +100,12 @@ def test_normalize_regions_coerces_numeric_string_page_number() -> None:
     assert out == [{"page_number": 3, "bbox": None}]
 
 
+def test_normalize_regions_rejects_decimal_string_page_number() -> None:
+    out = normalize_regions([{"page_number": "3.0"}])
+    assert out == [{"bbox": None}]
+    assert "page_number" not in out[0]
+
+
 def test_normalize_regions_rejects_nonpositive_page_numbers() -> None:
     out = normalize_regions([{"page_number": 0}, {"page_number": -2}])
     assert out == [{"bbox": None}, {"bbox": None}]
