@@ -165,6 +165,11 @@ def test_normalize_page_span_rejects_nonpositive_explicit_pair() -> None:
     assert normalize_page_span([-1, 3], []) is None
 
 
+def test_normalize_page_span_rejects_whitespace_nonpositive_string_pair() -> None:
+    assert normalize_page_span([" 0 ", "\t3\n"], []) is None
+    assert normalize_page_span(["\t-1\n", "3"], []) is None
+
+
 def test_normalize_page_span_rejects_float_explicit_pair() -> None:
     assert normalize_page_span([1.9, 3.1], []) is None
 
