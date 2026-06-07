@@ -5967,6 +5967,20 @@ def _current_git_head(repo_root: Path) -> str | None:
     return result.stdout.strip() or None
 
 
+def _current_git_head_full(repo_root: Path) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    head = result.stdout.strip()
+    return head if re.fullmatch(r"[0-9a-f]{40}", head) else None
+
+
 def _open_pr_for_branch(branch: str | None, *, repo_root: Path) -> str | None:
     if not branch or branch in {"HEAD", "main", "master", "unknown"}:
         return None
@@ -7033,6 +7047,127 @@ def _changed_files_hash(changed_files: Sequence[str], *, repo_root: Path) -> str
         payload.append({"path": display, "content_hash": content_hash})
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _ship_manifest_ignorable_dirty_path(path: str) -> bool:
+    normalized = path.strip().lstrip("./")
+    return normalized == "reports/agent_loop" or normalized.startswith("reports/agent_loop/")
+
+
+def _maybe_emit_active_ship_manifest(
+    *,
+    enabled: bool,
+    execute_ship: bool,
+    task_pool_size: int,
+    cycles: Sequence[dict[str, object]],
+    source_branch: str | None,
+    manifest_dir: Path,
+    ship_day: str | None,
+    repo_root: Path,
+) -> dict[str, object] | None:
+    """Write the loop→ship-lane manifest when the opt-in seam is safely satisfied.
+
+    This is deliberately a *file hand-off*, not a merge. The source SHA is the
+    current full git HEAD, and the seam refuses to emit when local non-report edits
+    are uncommitted because the manifest's ``source_sha`` would not cover them.
+    """
+    if not enabled:
+        return None
+    result: dict[str, object] = {
+        "enabled": True,
+        "emitted": False,
+        "reason": "not evaluated",
+    }
+    if execute_ship:
+        result["reason"] = "execute_ship already uses the legacy ship-run lane"
+        return result
+    if task_pool_size != 1:
+        result["reason"] = "ship manifest emission requires serial task_pool=1"
+        return result
+    completed_cycles = [cycle for cycle in cycles if cycle.get("completed") is True]
+    if len(completed_cycles) != 1:
+        result["reason"] = f"expected exactly one completed cycle, found {len(completed_cycles)}"
+        return result
+    cycle = completed_cycles[0]
+    if cycle.get("completion_decision") != "local-gate-complete":
+        result["reason"] = "completed cycle was not a local-gate-complete handoff"
+        return result
+    if cycle.get("gate_ready") is not True or cycle.get("privacy_clean") is not True:
+        result["reason"] = "gate evidence is not ready and privacy-clean"
+        return result
+    if not source_branch or not _branch_is_issue_linked(source_branch):
+        result["reason"] = "source branch is not an issue-linked feature branch"
+        return result
+    source_sha = _current_git_head_full(repo_root)
+    if source_sha is None:
+        result["reason"] = "could not bind source_sha to full git HEAD"
+        return result
+    try:
+        dirty_paths = _changed_files_from_git(repo_root)
+    except ValueError as exc:
+        result["reason"] = f"could not verify git dirty state: {exc}"
+        return result
+    non_report_dirty = [
+        path for path in dirty_paths if not _ship_manifest_ignorable_dirty_path(path)
+    ]
+    if non_report_dirty:
+        result["reason"] = "non-report working tree edits are uncommitted: " + ", ".join(
+            non_report_dirty[:5]
+        )
+        return result
+    gate_evidence_raw = str(cycle.get("gate_evidence") or "").strip()
+    if not gate_evidence_raw:
+        result["reason"] = "completed cycle has no gate evidence path"
+        return result
+    gate_path = Path(gate_evidence_raw)
+    if not gate_path.is_absolute():
+        gate_path = repo_root / gate_evidence_raw
+    if not gate_path.is_file():
+        result["reason"] = f"gate evidence file is missing: {gate_evidence_raw}"
+        return result
+    gate_rel = _repo_path(gate_path, repo_root)
+    gate_digest = "sha256:" + hashlib.sha256(gate_path.read_bytes()).hexdigest()
+    changed_files = [
+        _normalize_changed_file(str(path), repo_root=repo_root)
+        for path in cycle.get("changed_files", [])
+        if path
+    ] if isinstance(cycle.get("changed_files"), list) else []
+    task_id = str(cycle.get("task_id") or "")
+    title_text = _sanitize_inline_text(str(cycle.get("title") or "Agent loop task"))
+    from scripts._staging_ship import (  # noqa: PLC0415
+        detect_self_ship_protected_paths,
+        write_ship_manifest,
+    )
+
+    manifest_path = write_ship_manifest(
+        _active_path(manifest_dir, repo_root=repo_root),
+        source_branch=source_branch,
+        source_sha=source_sha,
+        title=f"{task_id}: {title_text}" if task_id else title_text,
+        body=(
+            "Automated staging self-ship candidate.\n\n"
+            f"- Task: {task_id or 'N/A'}\n"
+            f"- Gate evidence: `{gate_rel}`\n"
+            "- Authority remains with staging branch protection and live required checks."
+        ),
+        day=ship_day or datetime.now(timezone.utc).date().isoformat(),
+        gate_evidence_path=gate_rel,
+        gate_evidence_digest=gate_digest,
+        protected_paths_changed=detect_self_ship_protected_paths(tuple(changed_files)),
+        ci_evidence_ref="staging-live-required-checks",
+        review_gate_ref="staging-live-pr-review",
+    )
+    return {
+        "enabled": True,
+        "emitted": True,
+        "reason": "local gate complete",
+        "path": _repo_path(manifest_path, repo_root),
+        "task_id": task_id,
+        "source_branch": source_branch,
+        "source_sha": source_sha,
+        "gate_evidence_path": gate_rel,
+        "gate_evidence_digest": gate_digest,
+    }
 
 
 def write_eval_run_manifest(
@@ -11285,6 +11420,9 @@ def write_active_auto_loop(
     target_completed_count: int | None = None,
     execute_runner: bool = False,
     execute_ship: bool = False,
+    emit_ship_manifest: bool = False,
+    ship_manifest_dir: Path = DEFAULT_ACTIVE_DIR,
+    ship_day: str | None = None,
     auto_repair: bool = False,
     record_gate_heartbeats: bool = True,
     task_id: str | None = None,
@@ -12533,6 +12671,28 @@ def write_active_auto_loop(
     else:
         decision = "planned"
 
+    ship_manifest_emission = _maybe_emit_active_ship_manifest(
+        enabled=emit_ship_manifest,
+        execute_ship=execute_ship,
+        task_pool_size=effective_task_pool_size,
+        cycles=cycles,
+        source_branch=parent_branch,
+        manifest_dir=ship_manifest_dir,
+        ship_day=ship_day,
+        repo_root=repo_root,
+    )
+    if ship_manifest_emission is not None:
+        if ship_manifest_emission.get("emitted") is True:
+            warnings.append(
+                "ship manifest emitted: "
+                + str(ship_manifest_emission.get("path", "unknown"))
+            )
+        else:
+            warnings.append(
+                "ship manifest not emitted: "
+                + str(ship_manifest_emission.get("reason", "unknown"))
+            )
+
     # T-X1 (agent-loop integration plan): advisory-only learning-capture pointer,
     # recorded only when the loop actually ran a cycle. Never writes to the
     # wiki/memory or invokes any agent (call-only); decision/control flow unchanged.
@@ -12574,6 +12734,8 @@ def write_active_auto_loop(
         # locked snapshot uniformly with the checkpoint reader. Uncontended at X==1 -> byte-identical.
         "warnings": _dedupe_preserve_order(warnings.snapshot()),
     }
+    if ship_manifest_emission is not None:
+        state_payload["ship_manifest_emission"] = ship_manifest_emission
     # ADR 0092 (AC8/AC13): emit recommendations + cooldown_state on the terminal state write
     # too (this block, not write_cycle_checkpoint, is the final state file). The persisted
     # cooldown_state is what _load_active_lane_stats reads on the NEXT run so a just-actuated
@@ -12619,6 +12781,11 @@ def write_active_auto_loop(
             "blockers": blockers,
             "learning_capture_advisory": bool(learning_advisory),
             "adr_lifecycle_advisory": bool(adr_lifecycle_advisory),
+            "ship_manifest_emitted": (
+                bool(ship_manifest_emission.get("emitted"))
+                if ship_manifest_emission is not None
+                else False
+            ),
         },
     )
     return ActiveAutoLoopResult(
@@ -21279,6 +21446,13 @@ def build_parser() -> argparse.ArgumentParser:
     auto_loop.add_argument("--target-completed-count", type=int)
     auto_loop.add_argument("--execute-runner", action="store_true")
     auto_loop.add_argument("--execute-ship", action="store_true")
+    auto_loop.add_argument(
+        "--emit-ship-manifest",
+        action="store_true",
+        help="Opt-in: write ship_manifest.json after exactly one local-gate-complete cycle.",
+    )
+    auto_loop.add_argument("--ship-manifest-dir", type=Path, default=DEFAULT_ACTIVE_DIR)
+    auto_loop.add_argument("--ship-day")
     auto_loop.add_argument("--auto-repair", action=argparse.BooleanOptionalAction, default=False)
     auto_loop.add_argument("--record-gate-heartbeats", action=argparse.BooleanOptionalAction, default=True)
     auto_loop.add_argument("--task")
@@ -22374,6 +22548,9 @@ def main(argv: list[str] | None = None) -> int:
                 target_completed_count=args.target_completed_count,
                 execute_runner=args.execute_runner,
                 execute_ship=args.execute_ship,
+                emit_ship_manifest=args.emit_ship_manifest,
+                ship_manifest_dir=args.ship_manifest_dir,
+                ship_day=args.ship_day,
                 auto_repair=args.auto_repair,
                 record_gate_heartbeats=args.record_gate_heartbeats,
                 task_id=args.task,
