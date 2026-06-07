@@ -35,7 +35,7 @@ Until then, use the stable symbolic IDs below in plans and handoffs.
 
 | Stage | Default disposition | Queue action | Claim/evidence boundary |
 |---|---|---|---|
-| Inputs | Reuse parser roadmap and ADR 0103 parser micro-eval wiring/searchability surface. | Do not duplicate parser task; link to `T-2026-0081` parser plan after namespace reconciliation. | Parser micro-eval proves wiring/searchability only, not parser/OCR/VLM quality. |
+| Inputs | Reuse parser roadmap and ADR 0102 parser micro-eval wiring/searchability surface. | Do not duplicate parser task; link to `T-2026-0081` parser plan after namespace reconciliation. | Parser micro-eval proves wiring/searchability only, not parser/OCR/VLM quality. |
 | Index | Reuse existing page-aware, Chroma/memory/Qdrant parity, embedding, and provenance tasks. | Add only conditional `FP-INDEX-ELEMENT` if parser element stream fields fail to reach stable chunks/index provenance. | Index claims require index-generation fingerprint/provenance. |
 | Query entry | Missing durable entry taxonomy/normalization contract. | Promote `FP-QE` as the first new narrow task draft. | Fixture/unit wiring first; no UI/productization by default. |
 | Query planning | Reuse `rag_query.py` seams and existing planning lane. | Merge query-slice attribution and metadata-first acceptance into existing planning work. | Do not replace planner wholesale before attribution evidence. |

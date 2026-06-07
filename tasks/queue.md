@@ -3277,7 +3277,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0035 — Prompt-injection and data boundary guardrail
@@ -3336,7 +3336,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0036 — Abstention, conflict, and freshness calibration
@@ -3394,7 +3394,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0037 — Metadata, authority, and freshness ranking experiment
@@ -3456,7 +3456,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0038 — Contextual retrieval and sentence-window proof of concept
@@ -3515,7 +3515,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0039 — Advanced architecture feasibility gate
@@ -3571,7 +3571,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0040 — Active-loop registry v2 + dual-agent lanes scaffold
@@ -4091,7 +4091,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0049 — Round 1 experiment synthesis and plan adjustment
@@ -4147,7 +4147,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0050 — Parser, layout, and table coverage experiment
@@ -4209,7 +4209,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0051 — Embedding and representation controlled sweep
@@ -4268,7 +4268,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0052 — Generator grounding and citation calibration experiment
@@ -4331,7 +4331,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0053 — Round 2 experiment synthesis and plan adjustment
@@ -4389,7 +4389,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0054 — End-to-end winning-variant bakeoff
@@ -4452,7 +4452,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0055 — Final optimization decision packet
@@ -4509,7 +4509,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: TBD - create when the task starts.
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0056 — Ollama local OpenAI-compatible provider spike
@@ -4763,7 +4763,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0060 — Visual evidence contract hardening
@@ -4820,7 +4820,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0061 — Opt-in VLM captioning spike
@@ -4878,7 +4878,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0062 — Agent tool-state-trace contract
@@ -4932,7 +4932,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0063 — Agent security and human-in-the-loop guardrail
@@ -4990,7 +4990,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0064 — Multimodal troubleshooting vertical slice
@@ -5050,7 +5050,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0065 — Agent trajectory evaluation
@@ -5108,7 +5108,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0066 — Product API/demo integration
@@ -5162,7 +5162,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0067 — Self-hosted OpenAI-compatible serving demo
@@ -5222,7 +5222,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0068 — Knowledge/Graph RAG feasibility
@@ -5278,7 +5278,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0069 — Interview and resume evidence pack
@@ -5336,7 +5336,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0070 — Portfolio review board refresh
@@ -5393,7 +5393,7 @@ make check-branch
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md`](../docs/plans/T-2026-0056-multimodal-agent-positioning-stack.md)
-- Issue: TBD
+- Issue: #2693
 - PR: TBD
 
 ## T-2026-0076 — Verify real100_v2 page-aware retrieval integrity (embedding parity + provenance)
@@ -5477,3 +5477,348 @@ make check-branch
 - [x] ADR 0062 verifies-key 마커 drift 정정 — 2026-06-02 (issue #1811). line 116 마커 `test_adr_0059_first_match_contract`→`test_adr_0075_first_match_contract`(first-match 계약 0059→0075 재명명, 실제 함수명). lint-fail 해소; 본문 historical 산문 보존.
 - [x] Makefile `real-eval-with-judge` legacy stub 정합 — 2026-06-02 (issue #1813). prereq `real-eval`(exit 2) 제거 + minilm/semantic 패턴 독립 stub화 + real-eval-v2-judge 안내. run_real_eval_delta.py 주석도 v2 정합. ADR 0006은 이미 Superseded라 본문 미변경.
 - [x] PR3 ADR-index integrity (verification-only): count recompute==README, 0074 own-row==1, dead-link==0 — 2026-06-02 실측. 0편집이면 빈 PR 미개설(증거 only); 깨짐 발견 시에만 fix PR3.
+
+## T-2026-0081 — Parser OCR/VLM routing roadmap for RFP PDFs
+
+- ID: T-2026-0081
+- Title: Parser OCR/VLM routing roadmap for RFP PDFs
+- Status: ready
+- Priority: P0
+- Owner role: Implementer -> Benchmark Auditor -> Reviewer
+- Created: 2026-06-05
+- Last updated: 2026-06-05
+
+### Goal
+
+Turn the PDF parser candidate discussion into a durable, staged roadmap: keep
+PyMuPDF4LLM as citation control, run OCR only when page routing says it is
+needed, evaluate PaddleOCR classic separately from PaddleOCR-VL / PP-StructureV3,
+and add chart/diagram/table-aware VLM/document-parser candidates before any
+canonical parser replacement decision.
+
+### Scope
+
+- Stabilize the 12-doc parser eval harness so PyMuPDF4LLM control runs OCR-off.
+- Add page-level audit/routing signals for text density, tables, images, and
+  chart/diagram/VLM-needed pages.
+- Compare Tesseract baseline, PaddleOCR classic OCR, PP-StructureV3/PaddleOCR-VL,
+  and optional hosted parser/VLM candidates only on routed pages.
+- Normalize postprocessed elements with page spans, bbox when available,
+  provenance, and row-level metadata.
+
+### Non-Goals
+
+- Do not run full-document OCR by default.
+- Do not replace canonical PyMuPDF4LLM ingestion before 12-doc evidence and ADR.
+- Do not treat PaddleOCR and PaddleOCR-VL as interchangeable.
+- Do not commit raw parser output or hosted payload dumps.
+
+### Acceptance Criteria
+
+- [x] 12-doc run completes with PyMuPDF4LLM OCR-off + pdfplumber sidecar.
+- [x] Page audit labels each page as text/table/OCR/VLM/manual-review/skip.
+- [x] Duplicate byte-identical aliases remain separate documents.
+- [ ] PaddleOCR classic and PaddleOCR-VL/PP-StructureV3 are evaluated as separate candidate classes.
+- [ ] Chart/diagram/table-heavy pages are represented in metrics.
+- [ ] ADR trigger is explicitly handled before any canonical ingestion change.
+
+### Validation Commands
+
+```bash
+python3 -m pytest tests/test_parser_candidate_eval.py -q
+python3 -m pytest tests/test_parser_page_audit.py tests/test_route_filtered_candidate_eval.py tests/test_visual_donut_regression.py -q
+python3 -m py_compile scripts/run_parser_candidate_eval.py scripts/summarize_parser_candidate_eval.py
+python3 -m py_compile scripts/audit_parser_pages.py scripts/run_route_filtered_candidate_eval.py visual_ingestion.py
+python3 scripts/run_parser_candidate_eval.py --manifest data/private/real100_v2/converted_pdfs_by_path/manifest.json --subset .omx/context/pdf-parser-12doc-subset.json --candidates pymupdf4llm_current,pdfplumber_table_sidecar --run-id <run_id>
+python3 scripts/summarize_parser_candidate_eval.py --run-id <run_id>
+python3 scripts/audit_parser_pages.py --manifest data/private/real100_v2/converted_pdfs_by_path/manifest.json --subset .omx/context/pdf-parser-12doc-subset.json --run-id <run_id>
+python3 scripts/run_route_filtered_candidate_eval.py --page-audit <page_audit.json> --candidates paddleocr_classic --labels ocr_needed --max-pages 1 --render-dpi 72 --page-timeout-s 60 --run-id <run_id>
+python3 scripts/run_route_filtered_candidate_eval.py --page-audit <page_audit.json> --candidates paddleocr_classic,tesseract_baseline --labels ocr_needed --max-pages 1 --render-dpi 72 --page-timeout-s 120 --page-retries 1 --tesseract-lang kor+eng --run-id <run_id>
+make real-eval-v2-guard
+git diff --check
+```
+
+### Evidence Required
+
+- Aggregate candidate summary and markdown report.
+- Route distribution counts for the 12-doc subset.
+- Duplicate alias check evidence for rows 17/55 and 23/48.
+- Skip/failure reasons for any uninstalled or unconfigured parser/VLM candidates.
+
+### Related Plan / Issue / PR Links
+
+- Plan: [`docs/plans/T-2026-0081-parser-ocr-vlm-routing-roadmap.md`](../docs/plans/T-2026-0081-parser-ocr-vlm-routing-roadmap.md)
+- Issue: #2693
+- PR: TBD
+
+#### Progress — 2026-06-05 Phase 0 smoke
+
+- Implemented initial `scripts/run_parser_candidate_eval.py` and `scripts/summarize_parser_candidate_eval.py` harness.
+- Added OCR-off default/CLI/env resolution for PyMuPDF4LLM eval control plus per-document timeout.
+- Ran `parser-12doc-ocr-off-smoke-20260605T050845Z` with `--no-pymupdf4llm-use-ocr`, `--pymupdf4llm-timeout-s 45`, and `--pdfplumber-max-pages 3`.
+- Aggregate result: PyMuPDF4LLM OCR-off control `ok=5/12`, `parse_timeout=7`; pdfplumber first-3-page sidecar `ok=12/12`, `tables=48`; duplicate alias checks passed for both.
+- Next: add page-audit routing before OCR/VLM candidates.
+
+#### Progress — 2026-06-05 Phase 1 page audit
+
+- Added `scripts/audit_parser_pages.py` and `tests/test_parser_page_audit.py`.
+- Ran `page-audit-12doc-20260605T052555Z` over the 12-doc subset.
+- Aggregate primary routes: `text_layer=213`, `table_sidecar=831`, `ocr_needed=34`, `vlm_needed=154` across 1232 pages.
+- Overlapping labels: `text_layer=1115`, `table_sidecar=895`, `ocr_needed=117`, `vlm_needed=154`.
+- Duplicate alias checks passed.
+- Interpretation: OCR remains selective, table sidecar is core, and VLM/document parser evaluation is justified for 154 pages. Row 62 is the largest VLM-needed target; row 16 is the strongest OCR-needed target.
+- Next: route-filtered candidate execution for PaddleOCR classic and PP-StructureV3/PaddleOCR-VL, plus table-audit timeout/cap before 96-doc expansion.
+
+#### Progress — 2026-06-05 Phase 2 route-filtered PaddleOCR classic smoke
+
+- Added `scripts/run_route_filtered_candidate_eval.py` and `tests/test_route_filtered_candidate_eval.py`.
+- Patched `visual_ingestion.paddleocr_provider` for local PaddleOCR 3.x compatibility; `paddleocr==3.5.0` rejects old `show_log` and `cls=True` usage, while its output is a 3.x `OCRResult.json` shape.
+- Added PaddleOCR 2.x/3.x output-shape regression tests in `tests/test_visual_donut_regression.py`.
+- Ran `route-paddleocr-ocr-needed-smoke-20260605T055750Z` over one `ocr_needed` labeled page with `--render-dpi 72` and `--page-timeout-s 60`.
+- Result: selected pages `1`, ok pages `1`, blocks `2`, text chars `36`, avg confidence `0.9712`, runtime `24.3399s`.
+- Recorded local bundle: `paddleocr==3.5.0`, `paddlex==3.5.2`, `paddlepaddle==3.3.1`, models `PP-LCNet_x1_0_textline_ori`, `PP-OCRv5_server_det`, `korean_PP-OCRv5_mobile_rec`.
+- Interpretation: PaddleOCR classic is viable as a routed OCR provider but too expensive to run document-wide; use page-level timeout and compare against Tesseract on routed pages before any canonical decision.
+- Next: add Tesseract route-filter candidate or run Tesseract-vs-PaddleOCR on identical OCR pages; evaluate PP-StructureV3/PaddleOCR-VL separately for `vlm_needed` pages.
+
+#### Progress — 2026-06-05 Phase 3 Tesseract routed baseline
+
+- Added `tesseract_baseline` to `scripts/run_route_filtered_candidate_eval.py`.
+- Runner Tesseract candidate uses explicit eval-only `--tesseract-lang kor+eng` without changing canonical `visual_ingestion.tesseract_ocr_provider` defaults.
+- Local Tesseract state: `pytesseract==0.3.13`, `tesseract 5.5.2`, `kor` and `eng` language packs installed.
+- Ran `route-ocr-needed-tesseract-vs-paddleocr-20260605T062703Z` on the same selected row 17 page 8.
+- Result: `tesseract_baseline` ok `1/1`, blocks `3`, text chars `35`, avg confidence `0.849`, runtime `77.0404s`.
+- Result: `paddleocr_classic` failed `1/1` by `page_inference_failed` timeout at `120s` in the paired run, despite standalone success on the same page in Phase 2. Treat this as runtime stability/warmup/process-isolation evidence, not an OCR quality verdict.
+- Next: add warmup/retry or stricter candidate isolation before expanding OCR comparison; then run a tiny row 16 OCR-primary sample. Keep PP-StructureV3/PaddleOCR-VL as the separate next candidate class for `vlm_needed` pages.
+
+#### Progress — 2026-06-05 Phase 4 retry gate
+
+- Added `--page-retries` to `scripts/run_route_filtered_candidate_eval.py`.
+- Page artifacts now retain `attempts` so timeout/retry behavior is auditable.
+- Added a unit regression for first-attempt timeout followed by second-attempt success; document status remains `ok` while the failed attempt is preserved.
+- Gate: do not expand routed OCR comparison beyond a tiny sample unless `--page-timeout-s` and `--page-retries` are explicit in the run command.
+- Next: run row 16 OCR-primary sample with timeout+retry, then start PP-StructureV3/PaddleOCR-VL discovery for `vlm_needed` pages.
+
+#### Progress — 2026-06-05 Phase 5 row 16 OCR-primary tiny sample
+
+- Confirmed row 16 has 20 primary `ocr_needed` pages; first selected page is row 16 page 1.
+- Ran `route-row16-ocr-primary-smoke-20260605T064211Z` with `--primary-routes ocr_needed`, `--csv-rows 16`, `--max-pages 1`, `--render-dpi 72`, `--page-timeout-s 45`, `--page-retries 1`, and `--tesseract-lang kor+eng`.
+- Result: `tesseract_baseline` ok `1/1`, blocks `5`, text chars `54`, avg confidence `0.8694`, runtime `1.0681s`.
+- Result: `paddleocr_classic` ok `1/1`, blocks `4`, text chars `40`, avg confidence `0.9686`, runtime `21.5438s`.
+- Interpretation: both candidates can complete on a primary OCR page; Tesseract was faster here and PaddleOCR had higher average confidence, but no quality winner can be claimed without page-level ground truth/human review.
+- Trimmed future Tesseract version metadata to language count + `kor`/`eng` availability instead of the full local language list.
+- Next: add page-level qualitative review rubric / mini ground truth for OCR sample, and start PP-StructureV3/PaddleOCR-VL candidate setup for `vlm_needed` pages.
+
+#### Progress — 2026-06-05 Phase 6 Paddle VLM/structure setup check
+
+- Local `paddleocr==3.5.0` exposes `PPStructureV3` and `PaddleOCRVL`; no VLM/structure models were found under `~/.paddlex/official_models`.
+- Local `PaddleOCRVL` signature defaults to `pipeline_version='v1.5'`, so PaddleOCR-VL-1.6 should be evaluated through an isolated package upgrade lane or the hosted official API, not silently under the current local 3.5.0 bundle.
+- Current latest package evidence: PyPI `paddleocr==3.6.0`, released 2026-05-28; GitHub `v3.6.0` release introduces PaddleOCR-VL-1.6 and official API SDKs.
+- Official docs: PP-StructureV3 covers layout/table/formula/chart/reading-order/Markdown; hosted Python SDK document parsing defaults to `PADDLE_OCR_VL_16` and supports `PP_STRUCTURE_V3` plus PaddleOCR-VL variants, but it submits hosted jobs rather than local inference.
+- Decision: keep `PPStructureV3` and `PaddleOCRVL` separate `vlm_needed` candidates; hosted API is a third opt-in candidate requiring credentials/endpoint configuration.
+- Next: add `vlm_needed` candidate skeletons with explicit skip reasons: `pp_structurev3_local`, `paddleocr_vl_local`, and optional `paddleocr_official_api`; run dry-run/skipped coverage until isolated env/API key choice is explicit.
+
+#### Progress — 2026-06-05 Phase 7 VLM skeleton coverage
+
+- Added `pp_structurev3_local`, `paddleocr_vl_local`, and `paddleocr_official_api` skeleton candidates to `scripts/run_route_filtered_candidate_eval.py`.
+- Added a regression test that VLM skeleton candidates record explicit `candidate_not_enabled` skip reasons.
+- Ran `route-row62-vlm-skeleton-20260605T064649Z` over row 62 page 1, selected from 54 primary `vlm_needed` pages.
+- Result: all three candidates skipped `1/1` with `candidate_not_enabled`, as intended.
+- Availability: local `PPStructureV3` and `PaddleOCRVL` classes exist in `paddleocr==3.5.0`; local `PaddleOCRClient` does not. No VLM/structure model cache was found.
+- Decision: skeleton coverage is complete; next choice is material and should not be hidden in normal runner expansion — choose local isolated env/model cache or hosted official API credentials before real VLM inference.
+
+#### Progress — 2026-06-05 Phase 8 local-vs-hosted VLM/API smoke
+
+- Extended `scripts/run_route_filtered_candidate_eval.py` with explicit local VLM and hosted API opt-in gates plus `--paddleocr-python` for isolated env execution.
+- Created isolated env outside repo: `~/.cache/bidmate-docagent/paddleocr-vl-venv-py311` with `paddleocr==3.6.0`, `paddlex==3.6.1`, `paddlepaddle==3.3.1`, and `PyMuPDF==1.27.2.3`.
+- Hosted API preflight now sees `PaddleOCRClient` in the 3.6 env but skips with `credential_unavailable` because `PADDLEOCR_ACCESS_TOKEN` is absent.
+- Local PP-StructureV3 global env failed due missing `paddlex[ocr]`; isolated 3.6 env progressed to model download; HuggingFace-forced run downloaded layout/OCR models but row 62 page 1 timed out at `420s` on CPU.
+- Local PaddleOCR-VL-1.6 preflight skips with `model_cache_missing`; no heavy VL model download was started.
+- Decision: do not make PP-StructureV3/PaddleOCR-VL local CPU a default path. Keep hosted API/remote GPU as explicit tiny-sample lanes, and continue with OCR qualitative review + table-audit caps first.
+
+#### Progress — 2026-06-05 Phase 9 OCR mini review packet
+
+- Added `scripts/build_ocr_review_packet.py` and `tests/test_ocr_review_packet.py`.
+- Generated `ocr-mini-review-row16-row17-20260605T074054Z` from existing row16/page1 and row17/page8 OCR artifacts.
+- Private packet with raw OCR text/images: `data/private/real100_v2/ocr_review/ocr-mini-review-row16-row17-20260605T074054Z/review_packet.md`.
+- Textless aggregate: `reports/parser_candidate_eval/ocr-mini-review-row16-row17-20260605T074054Z/ocr_review.md`.
+- Draft AI visual review marks `paddleocr_classic` as winner on both inspected pages, but this remains `draft_ai_visual_review`, not human-confirmed benchmark truth.
+- Next: add table-audit timeout/cap before expanding page audit or parser candidate runs beyond tiny samples.
+
+#### Progress — 2026-06-05 Phase 10 table-audit timeout/cap
+
+- Added `--table-timeout-s`, `--table-max-pages-per-doc`, and `--disable-table-detection` to `scripts/audit_parser_pages.py`.
+- Added timeout/cap regression tests in `tests/test_parser_page_audit.py`.
+- Ran `page-audit-12doc-table-capped-20260605T074646Z` with `--table-timeout-s 2 --table-max-pages-per-doc 3`.
+- Result: `1232` pages audited in about `24.1s`; duplicate alias checks passed; route counts `ocr_needed=34`, `table_sidecar=11`, `text_layer=1033`, `vlm_needed=154`.
+- Warning count `pymupdf_find_tables_skipped_by_cap=1196` is expected because table detection was intentionally limited to first 3 pages/doc.
+- Decision: use capped audit for corpus-wide routing expansion; keep targeted table-sidecar measurement separate from routing audit.
+
+#### Progress — 2026-06-05 Phase 11 96-path capped routing audit
+
+- Created `.omx/context/pdf-parser-96path-subset.json` from the 96 path-level PDF manifest rows.
+- Ran `page-audit-96path-table-capped-20260605T074915Z` with `--table-timeout-s 2 --table-max-pages-per-doc 3`.
+- Result: `96` documents, `9107` pages audited; route counts `text_layer=7807`, `vlm_needed=1029`, `ocr_needed=176`, `table_sidecar=92`, `manual_review=3`.
+- Duplicate alias invariant passed for row pairs `23/48` and `17/55`.
+- Top VLM row: row 62 with `54` VLM pages. Top OCR row: row 16 with `20` OCR pages.
+- Decision: capped audit is now the corpus-wide routing surface; next step is parser output merge/element schema before wiring OCR/table/VLM into canonical chunks.
+
+#### Progress — 2026-06-05 Phase 12 merge schema contract
+
+- Added `docs/plans/T-2026-0081-parser-output-merge-schema.md`.
+- Contract fixes document artifact schema, element schema, merge priority, citation readiness, de-duplication, and ADR/eval gates.
+- Decision: build a 12-doc element-stream artifact next as a harness-only script; do not change canonical ingestion defaults yet.
+
+#### Progress — 2026-06-05 Phase 13 parser element stream harness
+
+- Added `scripts/build_parser_element_stream.py` and `tests/test_parser_element_stream.py`.
+- Generated `parser-element-stream-12doc-20260605T075908Z` as a harness-only merge artifact.
+- Private raw stream: `data/private/real100_v2/parser_element_stream/parser-element-stream-12doc-20260605T075908Z/element_stream.json`.
+- Textless aggregate: `reports/parser_candidate_eval/parser-element-stream-12doc-20260605T075908Z/element_stream.md`.
+- Result: `12` documents, `562` elements: `metadata_fact=167`, `text_layer=345`, `table=48`, `ocr_text=2`.
+- Decision: the next step is an eval-only chunk/index adapter plus tiny retrieval smoke over metadata/table/OCR facts; do not replace canonical `ingestion.py` defaults before retrieval evidence and ADR/eval review.
+
+#### Progress — 2026-06-05 Phase 14 element-stream retrieval smoke
+
+- Added `scripts/run_parser_element_stream_retrieval_smoke.py` and `tests/test_parser_element_stream_retrieval_smoke.py`.
+- Generated `parser-element-retrieval-smoke-12doc-20260605T080534Z` from the 12-doc parser element stream.
+- Private hashing index: `data/private/real100_v2/parser_element_retrieval_smoke/parser-element-retrieval-smoke-12doc-20260605T080534Z/index/index.json`.
+- Textless aggregate: `reports/parser_candidate_eval/parser-element-retrieval-smoke-12doc-20260605T080534Z/retrieval_smoke.md`.
+- Result: `12` documents, `564` chunks, `3/3` smoke queries passed. Metadata row16, OCR row16 cover, and table row23/48 paths all retrieved through the existing stack.
+- Decision: next step is a scored 12-doc expected-fact micro-eval by element source; current result is wiring smoke, not benchmark lift evidence.
+
+#### Progress — 2026-06-05 Phase 15 12-doc expected-fact micro-eval
+
+- Added `data/private/real100_v2/parser_element_micro_eval/parser-element-12doc-expected-facts.json` with 6 expected facts across metadata, OCR, table, and text-layer sources.
+- Extended `scripts/run_parser_element_stream_retrieval_smoke.py` to report top-1 row hits, MRR, and grouped source/type metrics.
+- Ran `parser-element-micro-eval-12doc-20260605T080937Z` with `--top-k 6`.
+- Result: `6/6` expected facts passed, top-1 row hits `5/6`, MRR `0.8889`.
+- Notable issue: `text_row48_compliance_table` passes but row 48 ranks 3 behind row 80 hits, so text-layer cross-document collisions remain the next retrieval-tuning case.
+- Decision: keep this as a tiny micro-eval surface candidate; do not use it as canonical benchmark evidence until duplicate-alias scoring and reviewer surface policy are documented.
+
+#### Progress — 2026-06-05 Phase 16 duplicate-alias scoring policy
+
+- Added alias-aware scoring to `scripts/run_parser_element_stream_retrieval_smoke.py`.
+- Default: path-level row strict. Opt-in: `allow_source_sha256_alias: true` expands declared rows to same-`source_sha256` sibling rows and reports `declared_expected_rows`, effective `expected_rows`, and `alias_rows`.
+- Updated `data/private/real100_v2/parser_element_micro_eval/parser-element-12doc-expected-facts.json`: metadata row17 allows alias row55; table row23 allows alias row48; OCR row17 remains strict.
+- Ran `parser-element-micro-eval-12doc-alias-aware-20260605T081316Z`: `6/6` pass, top-1 row hits `5/6`, MRR `0.8889`.
+- Decision: duplicate alias policy is now explicit enough for reviewer discussion, but this remains a candidate micro-eval surface until ADR/reviewer policy promotes it.
+
+#### Progress — 2026-06-05 Phase 17 VLM/API row 62 blocker samples
+
+- Ran hosted API preflight on row 62 first `vlm_needed` page: `route-row62-hosted-api-preflight-20260605T083248Z`.
+  - SDK available in isolated PaddleOCR 3.6 env, but `PADDLEOCR_ACCESS_TOKEN` unset → `credential_unavailable`; no paid call made.
+- Ran local PaddleOCR-VL preflight: `route-row62-paddleocr-vl-preflight-20260605T083248Z`.
+  - `PaddleOCRVL` class available, but VL model cache missing → `model_cache_missing`; no heavy VL download started.
+- Ran local PP-StructureV3 CPU sample: `route-row62-ppstructurev3-local-sample-20260605T083331Z`.
+  - 1 page failed at the bounded 120s timeout (`page_inference_failed`, page runtime `120.287s`, doc runtime `133.8847s`).
+- Decision: local CPU VLM is not a viable default. Next VLM evidence should use hosted API with token/cost approval or remote GPU/local model-download lane as an explicit opt-in.
+
+#### Progress — 2026-06-05 Phase 18 Paddle hosted API signup blocker
+
+- Maintainer reported `PADDLEOCR_ACCESS_TOKEN` requires a mainland China phone number via Baidu AI Studio / PaddleOCR official API signup.
+- Decision: stop pursuing PaddleOCR hosted API as the next sample lane. Keep `paddleocr_official_api` only as a harness candidate for environments that already have a token.
+- Pivot next VLM/API sample to a non-China-access-gated provider: Upstage Document Parse, OpenAI PDF/file-input vision, or Google Document AI Gemini Layout Parser.
+- Next implementation should add a provider-neutral VLM/API candidate interface and run one row 62 `vlm_needed` page only when a usable credential exists.
+
+#### Progress — 2026-06-05 Phase 19 hosted API skipped
+
+- Maintainer decision: skip hosted/paid document intelligence APIs for now, including PaddleOCR hosted API and Upstage Document Parse.
+- Reason: Paddle token is access-gated; Upstage cost is too high for this corpus shape.
+- Decision: keep hosted API candidates as disabled opt-in harness code only. Do not run paid API calls in the next parser/VLM phase.
+- Next local-only path: strengthen text/table/OCR sidecars, keep `vlm_needed` pages as unresolved visual backlog, and build a local visual inventory packet for top VLM rows such as row 62.
+
+#### Progress — 2026-06-05 Phase 20 local visual inventory row 62
+
+- Added `scripts/build_visual_inventory_packet.py` and `tests/test_visual_inventory_packet.py`.
+- Generated `visual-inventory-row62-vlm-top12-v2-20260605T091940Z` for row 62 top 12 `vlm_needed` pages.
+- Result: `12` pages; visual tags `image_rich=12`, `large_image_area=4`, `scanned_form_or_fullpage_image=4`, `low_area_multi_image=8`, `ocr_overlap=6`, `table_unknown=11`.
+- Spot check: high-priority pages are scanned form/seal-like; page 1 is a logo/cover false-positive for VLM. Next local improvement is to require minimum image-area for the image-count VLM branch and rerun routing counts.
+
+#### Progress — 2026-06-05 Phase 21 VLM routing v2 threshold
+
+- Added `--vlm-image-count-min-area-ratio` to `scripts/audit_parser_pages.py` with default `0.05`.
+- Added regression test so low-area multi-image logo/header pages do not become `vlm_needed` solely from image count.
+- Reran row62 routing: primary `vlm_needed` dropped `54 -> 4`.
+- Reran 96-path capped routing: primary `vlm_needed` dropped `1029 -> 227`; primary routes are now `text_layer=8249`, `ocr_needed=504`, `vlm_needed=227`, `table_sidecar=124`, `manual_review=3`.
+- Generated final row62 VLM inventory `visual-inventory-row62-vlm-v2-final-20260605T092302Z`: 4 pages (`152`, `166`, `167`, `168`), all scanned-form/fullpage-image + OCR-overlap candidates.
+- Decision: local pipeline should prioritize text/table/OCR; VLM/manual backlog is much smaller and mainly large-image scanned forms.
+
+#### Progress — 2026-06-05 Phase 22 downstream artifacts on routing v2
+
+- Updated default page-audit pointers in `scripts/build_parser_element_stream.py` and `scripts/build_visual_inventory_packet.py` to `page-audit-96path-routing-v2-20260605T092124Z`.
+- Updated retrieval smoke default element stream to `parser-element-stream-12doc-routing-v2-20260605T092518Z`.
+- Regenerated routing-v2 12-doc element stream: `12` docs, `562` elements (`metadata_fact=167`, `text_layer=345`, `table=48`, `ocr_text=2`).
+- Reran micro-eval `parser-element-micro-eval-12doc-routing-v2-20260605T092526Z`: `6/6` pass, top-1 row hits `5/6`, MRR `0.8889`.
+- Decision: routing v2 is now the local harness default. Remaining issue is text-layer retrieval rank, not VLM/API.
+
+#### Progress — 2026-06-05 Phase 23 expected-fact disambiguation
+
+- Updated `data/private/real100_v2/parser_element_micro_eval/parser-element-12doc-expected-facts.json` so
+  `text_row48_compliance_table` includes row-48-specific project terms instead
+  of generic compliance-table wording.
+- Kept `allow_source_sha256_alias: true` for the row 23/48 path-alias case.
+- Reran `parser-element-micro-eval-12doc-routing-v2-qfix-20260605T092729Z`:
+  `6/6` pass, top-1 row hits `6/6`, MRR `1.0`.
+- Decision: the prior row-48 rank issue was query/expected-fact ambiguity, not a
+  parser routing or VLM/API blocker. Next local-only work is reviewer-surface
+  hardening: query-writing rules, alias scoring policy, and aggregate-only
+  evidence boundaries before any canonical ingestion/default change.
+
+#### Progress — 2026-06-05 Phase 24 micro-eval surface hardening
+
+- Documented micro-eval reviewer-surface rules in
+  `docs/plans/T-2026-0081-parser-output-merge-schema.md`.
+- Added query config validation to
+  `scripts/run_parser_element_stream_retrieval_smoke.py`.
+- Added regression coverage in
+  `tests/test_parser_element_stream_retrieval_smoke.py`.
+- Guarded cases: duplicate query names, missing `expected_rows`, missing
+  `expected_element_types`, non-positive rows, and non-boolean
+  `allow_source_sha256_alias`.
+- Decision: the 12-doc parser element retrieval smoke is safer as a candidate
+  reviewer artifact, but remains harness evidence only. It is not yet an
+  ADR-approved measurement surface or canonical ingestion/default gate.
+
+#### Progress — 2026-06-05 Phase 25 candidate surface v0 gate
+
+- Added `scripts/validate_parser_element_micro_eval_surface.py` and
+  `tests/test_validate_parser_element_micro_eval_surface.py`.
+- Candidate name at this phase: `parser_element_micro_eval_candidate_v0`
+  (promoted in Phase 26 as `parser_element_micro_eval_v0`).
+- Fixed query-set hash:
+  `72acf426e277165258395b6c2934a13893013159c7d96c097eb4e0fe86d756c5`.
+- Gate validates the qfix aggregate is textless, uses the routing-v2 12-doc
+  element stream, has required metadata/OCR/table/text source+type coverage, and
+  reports `6/6` pass, `6/6` top-1 row hits, MRR `1.0`.
+- Validation command passed:
+  `python3 scripts/validate_parser_element_micro_eval_surface.py`.
+- Documented what this candidate surface measures and does not measure in
+  `docs/plans/T-2026-0081-parser-output-merge-schema.md`.
+- Decision: candidate gate is reproducible, but promotion to an official
+  reviewer-facing measurement surface still requires normal ADR/evaluation
+  surface registration before PRs treat it as required evidence.
+
+#### Progress — 2026-06-05 Phase 26 ADR 0102 promotion
+
+- Added `docs/adr/0102-parser-element-micro-eval-wiring-surface.md`.
+- Updated `docs/adr/README.md` and `docs/evaluation/surface-map.md`.
+- Official surface name: `parser_element_micro_eval_v0`.
+- Allowed claim: parser element stream wiring/searchability did or did not
+  regress for metadata, routed OCR, table sidecars, text-layer control, and
+  path-alias scoring.
+- Disallowed claims: PDF parser quality, OCR accuracy, table structure quality,
+  chart/diagram/VLM semantic extraction quality, real100_v2 retrieval/answer
+  quality, or canonical ingestion replacement.
+- Decision: the surface is now official reviewer evidence per ADR 0102, but it
+  is not a CI-required gate and does not change canonical ingestion defaults.
+
+#### Progress — 2026-06-05 Phase 27 self-describing aggregate hash
+
+- Updated `scripts/run_parser_element_stream_retrieval_smoke.py` so
+  `retrieval_smoke.aggregate.json` records `run.query_set_hash`.
+- Updated `scripts/validate_parser_element_micro_eval_surface.py` to require
+  the aggregate hash to match ADR 0102's fixed query-set hash:
+  `72acf426e277165258395b6c2934a13893013159c7d96c097eb4e0fe86d756c5`.
+- Updated tests for the runner and validator.
+- Decision: reviewer artifacts are now self-describing by hash without exposing
+  raw query text.
