@@ -249,6 +249,16 @@ def test_normalize_page_span_ignores_nonpositive_region_pages() -> None:
     ]
 
 
+def test_normalize_page_span_ignores_whitespace_nonpositive_string_region_pages() -> None:
+    assert normalize_page_span(
+        None,
+        [{"page_number": " 0 "}, {"page_number": "\t-1\n"}, {"page_number": 3}],
+    ) == [
+        3,
+        3,
+    ]
+
+
 def test_normalize_page_span_ignores_float_region_pages() -> None:
     assert normalize_page_span(None, [{"page_number": 1.9}, {"page_number": 3}]) == [
         3,
