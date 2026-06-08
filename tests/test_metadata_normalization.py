@@ -197,6 +197,11 @@ def test_normalize_page_span_wrong_length_pair_without_region_pages_is_none() ->
     assert normalize_page_span([1, 2, 3], []) is None
 
 
+def test_normalize_page_span_non_list_value_falls_back_to_regions() -> None:
+    assert normalize_page_span({"start": 1, "end": 3}, [{"page_number": 6}]) == [6, 6]
+    assert normalize_page_span("1-3", [{"page_number": 6}]) == [6, 6]
+
+
 def test_normalize_page_span_invalid_string_pair_falls_back_to_regions() -> None:
     assert normalize_page_span(["bad", "span"], [{"page_number": 4}]) == [4, 4]
 
