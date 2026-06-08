@@ -95,6 +95,8 @@ def compute_run_manifest(
     config_path: Path,
     index: dict[str, Any] | None = None,
     run_environment: Mapping[str, Any] | None = None,
+    *,
+    run_config: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the run_manifest block pinned to git commit + config bytes + UTC time.
 
@@ -130,6 +132,7 @@ def compute_run_manifest(
     if not chunker_version and chunking_strategy:
         chunker_version = f"chunker.{chunking_strategy}.v1"
     environment_block = build_run_environment_manifest(run_environment)
+    retrieval_config = dict(run_config or {})
     return {
         "git_commit": commit,
         "git_dirty": dirty,
@@ -145,6 +148,14 @@ def compute_run_manifest(
         "chunker_version": chunker_version,
         "chunk_max_chars": chunking_meta.get("max_chars"),
         "chunk_overlap_sentences": chunking_meta.get("overlap_sentences"),
+        "retrieval_backend": retrieval_config.get("retrieval_backend"),
+        "retrieval_mode": retrieval_config.get("retrieval_mode"),
+        "retrieval_top_k": retrieval_config.get("top_k"),
+        "retrieval_rerank": retrieval_config.get("rerank"),
+        "rrf_k": retrieval_config.get("rrf_k"),
+        "bm25_backend": retrieval_config.get("bm25_backend"),
+        "bm25_tokenizer": retrieval_config.get("bm25_tokenizer"),
+        "bm25_stopword_profile": retrieval_config.get("bm25_stopword_profile"),
         **environment_block,
     }
 
@@ -1776,6 +1787,7 @@ def main() -> int:
             config.get("run_environment")
             if isinstance(config.get("run_environment"), dict)
             else None,
+            run_config=primary_summary,
         ),
         "config": args.config,
         "index_dir": args.index_dir,

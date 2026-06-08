@@ -287,6 +287,14 @@ SAFE_RUN_MANIFEST_KEYS = (
     "embedding_model_id",
     "embedding_dim",
     "vector_store_backend",
+    "retrieval_backend",
+    "retrieval_mode",
+    "retrieval_top_k",
+    "retrieval_rerank",
+    "rrf_k",
+    "bm25_backend",
+    "bm25_tokenizer",
+    "bm25_stopword_profile",
 )
 SAFE_RUN_MANIFEST_NESTED_KEYS = {
     "environment": (

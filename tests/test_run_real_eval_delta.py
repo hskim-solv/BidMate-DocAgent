@@ -424,6 +424,33 @@ class ExtractAggregateTest(unittest.TestCase):
         # The dropped path should not appear anywhere in the serialized output.
         self.assertNotIn("hskim", json.dumps(agg))
 
+
+    def test_run_manifest_preserves_retrieval_provenance_fields(self) -> None:
+        summary = {
+            **FULL_SUMMARY,
+            "run_manifest": {
+                "retrieval_backend": "hybrid",
+                "retrieval_mode": "parent_section",
+                "retrieval_top_k": 8,
+                "retrieval_rerank": False,
+                "rrf_k": 60,
+                "bm25_backend": "okapi",
+                "bm25_tokenizer": "regex",
+                "bm25_stopword_profile": "shared",
+            },
+        }
+
+        manifest = extract_aggregate(summary)["run_manifest"]
+
+        self.assertEqual("hybrid", manifest["retrieval_backend"])
+        self.assertEqual("parent_section", manifest["retrieval_mode"])
+        self.assertEqual(8, manifest["retrieval_top_k"])
+        self.assertFalse(manifest["retrieval_rerank"])
+        self.assertEqual(60, manifest["rrf_k"])
+        self.assertEqual("okapi", manifest["bm25_backend"])
+        self.assertEqual("regex", manifest["bm25_tokenizer"])
+        self.assertEqual("shared", manifest["bm25_stopword_profile"])
+
     def test_run_manifest_redacts_local_embedding_model_path(self) -> None:
         summary = {
             **FULL_SUMMARY,

@@ -40,10 +40,10 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 27 | `T-2026-0027` | `done` | Planner -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1584 COMPLETED (RAG performance experiment task stack). |
 | 28 | `T-2026-0028` | `done` | Evaluator -> Benchmark Auditor -> Privacy Auditor -> Reviewer | merged in PR #1619; real100_v2-only guard and aggregate packet landed. |
 | 29 | `T-2026-0029` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1764; page-aware re-measurement DONE (diagnostic-only). Page blocker resolved (coverage 0.0 -> 1.0) but doc-level retrieval collapsed (~12%); renderer BUG #1/#2 hardened; root cause spun off as T-2026-0076. |
-| 30 | `T-2026-0030` | `ready` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | reopened after naive baseline remeasurement: rerender latency/cost envelope against the MiniLM page-aware v2 aggregate. |
-| 31 | `T-2026-0031` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | MiniLM page-aware checkpoint index now has non-zero page_span coverage; rerun only after refreshed baseline aggregate is available. |
-| 32 | `T-2026-0032` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | reopened after naive baseline remeasurement: rerun BGE-KO screening on the MiniLM page-aware v2 index before keeping no-winner status. |
-| 33 | `T-2026-0033` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | reopened after naive baseline remeasurement: rerun context-packing screening on the MiniLM page-aware v2 index before keeping latency_regression status. |
+| 30 | `T-2026-0030` | `blocked` | Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer | blocked by T-2026-0076 outcome: do not rerender latency/cost envelope against the current page-aware aggregate until same-stack page-aware MiniLM retrieval provenance/remeasurement replaces the incomparable hashing backup. |
+| 31 | `T-2026-0031` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | page-span coverage is non-zero, but T-2026-0076 found the current page-aware aggregate is not comparable to the hashing backup; rerun only after same-stack page-aware MiniLM retrieval provenance/remeasurement is available. |
+| 32 | `T-2026-0032` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | blocked by T-2026-0076 outcome: reranker screening would optimize against a doc-ranking collapse; wait for same-stack page-aware MiniLM retrieval provenance/remeasurement. |
+| 33 | `T-2026-0033` | `blocked` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | blocked by T-2026-0076 outcome: context-packing screening should wait for same-stack page-aware MiniLM retrieval provenance/remeasurement. |
 | 34 | `T-2026-0034` | `backlog` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P1; blocked on query-slice attribution from T-2026-0029. |
 | 35 | `T-2026-0035` | `backlog` | Security Reviewer -> Implementer -> Privacy Auditor -> Reviewer | P1 guardrail; should run before agentic/tool-using retrieval. |
 | 36 | `T-2026-0036` | `backlog` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P2; blocked on stable retrieval/context evidence from P0/P1 tasks. |
@@ -86,7 +86,7 @@ PR이 생기면 각 task에 링크를 추가한다. 예제 task는 `tasks/exampl
 | 73 | `T-2026-0073` | `done` | Implementer -> Reviewer | 2026-06-02: agent-loop 남은 보조도구 2종 advisory-only(호출만) 통합 완료 (T-2026-0072 후속). eval-to-adr-bridge (PR #1756 / issue #1755) — eval surface 게이트(`write_active_gate_evidence`)에서 ADR 임계 판단 advisory, T-2026-0072 의 eval-anomaly 형제와 동일 `_eval_surface_touched` 게이트에 부착; adr-lifecycle-manager (PR #1758 / issue #1757) — proposed-ADR SLA(ADR 0047) 초과 시 `write_active_auto_loop` state advisory, learning-capture 형제 패턴(렌더러 미변경). 둘 다 제어 흐름 불변(gate ready 결정 · preflight exit code · loop decision/defer/stop 그대로), 각 통합=별도 worktree + ADR 0007 브랜치 + 회귀 테스트(eval-to-adr 4종 / adr-lifecycle 6종). code-reviewer APPROVE 후 squash 머지, CI green. |
 | 74 | `T-2026-0074` | `done` | Implementer -> Reviewer | XYZ 병렬화 epic (X task-pool + Y omc multi-worker default-on + Z roles) **완결** (2026-06-04). 7-PR 시퀀스 A1→A2→B→C→D→E→F 머지 완료, capstone **PR-F #2261** (default task-pool X=2 go-live; ADR 0001 byte-identity X=1 default 경로 보존, 탈출구 3 env). PR-0 scaffolding issue #1762 CLOSED (ADR 0094/0095). 잔여 open brick PR/worktree 0. 설계 문서: [`docs/plans/xyz-parallelism-stack.md`](../docs/plans/xyz-parallelism-stack.md). 교훈: parity guard=ancestor≠tree-identity(exact rev-parse), 다라운드 codex escalation calibration, flaky-under-concurrent-codex vs regression 판별. |
 | 75 | `T-2026-0075` | `done` | Implementer -> Reviewer | issue #1765; `memory` VectorStore backend 가 default/baseline 로 새지 않도록 positive-shape 회귀 가드 (옵션 A — 런타임 코드 무변경, parity 테스트 무영향). `DEFAULT_INDEX_BACKEND`/default-resolve/eval `ablation_runs` 전체가 chroma 로 resolve 됨을 잠금 + 명시적 memory opt-in(test-control) 보존 (ADR 0001/0081). 기존 자산(presets default·`vector_store_backend_for_runs` mixed 거부·naive_baseline=chroma) 재사용, gap A(rag_vector_store chokepoint)+C(eval 전 row) 보강. merged in PR #1769 (issue #1765 CLOSED, 2026-06-02). |
-| 76 | `T-2026-0076` | `ready` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | P0; spun off from T-2026-0029 page-aware re-measurement. MiniLM page-aware `real100_v2` rebuild resolved the page blocker but collapsed doc-level retrieval (gold-doc-in-retrieved 61.4% -> 12.1%) despite 88.3% universe coverage (answerable-with-gold; 91.7% all-cases); the diagnostic renderer's new `retrieval_integrity_suspect` signal points here. Gates every downstream `real100_v2` optimization task (T-2026-0030/0032/0033). Issue: TBD (created when task starts). |
+| 76 | `T-2026-0076` | `done` | Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #2751; aggregate-only collapse diagnosis rendered. Current page-aware run is not comparable to the hashing backup (stack changed: embedding/backend/chunking/vector-store) and still shows doc-ranking collapse (`doc_hit_at_5` 0.106618 vs 0.529412; `chunk_hit_at_5` 0.011029 vs 0.375). Downstream `real100_v2` optimization tasks remain blocked until same-stack page-aware MiniLM retrieval provenance/remeasurement is available. |
 | 77 | `T-2026-0077` | `backlog` | Maintainer -> CI Reviewer -> Reviewer | issue #1800; **due 2026-06-09** — ui-smoke(#1799) nightly 표본으로 required status check 승격 판단. durable cron 이 cmux 미지원 → 이 queue 행이 리마인드 앵커(다음 세션 표면화). flaky 0 + nightly ≥5회면 승격 제안, 실패 있으면 run 로그 분석 + 추가 관찰. |
 | 78 | `T-2026-0078` | `backlog` | Architect -> Planner -> Implementer -> Deep Reviewer -> Reviewer | agent-loop `expanded-eight` 토폴로지의 single write-lease Implementer 병목 재조정 **탐색**. 8역할 중 Implementer 만 `write_lease_owner=true`(나머지 7 read-only) → 구현 직렬화가 throughput 제약. 설계 미확정(현행 유지 / Implementer ×M + shared reviewer pool / 역할 축소) → architect 옵션 비교 + 순차단계 분석 + ADR(load-bearing; ADR 0080 single-writer 제약과 충돌 분석) 선행 필요. `ready` 아님 = 자동 루프가 섣불리 구현 못 하게. 진단 출처: 2026-06-03 세션. 시각화: `scripts/render_agent_loop_board.py` 토폴로지 맵. |
 | 79 | `T-2026-0079` | `done` | Planner -> Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer | issue #1844/#1969/#2374 CLOSED; `agent-evals/` operator-skill eval thin slice **완료** (2026-06-04). 3-PR stack 전부 머지: PR1 #1964 (ADR 0100+scaffold) → PR2 #2343 (core+content scanner+playbook v0/v1+3-task synthetic smoke) → PR3 #2411 (full runner `git worktree add --detach` ≥3 seed + cross-family oracle `reviewer_family != candidate_family` fail-closed + holdout v0-vs-v1 byte-identical smoke aggregate). cross-family 리뷰 round2 #2446(6 fix)+round3 #2455(2 real+live fix, 1 latent defer, 1 contrived decline) → real 발견 3→6→2 점감 = live 표면 수렴(thesis 자기증명). 비 load-bearing. 실제 mining(#1336–1820)+external-reviewer payload egress(public-attestation-only) = deferred axis (thin slice 밖). detail: `## T-2026-0079`. |
@@ -2883,11 +2883,11 @@ make check-branch
 
 - ID: T-2026-0030
 - Title: Define latency and cost budget envelope
-- Status: ready
+- Status: blocked
 - Priority: P0
 - Owner role: Implementer -> CI Reviewer -> Benchmark Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-29
+- Last updated: 2026-06-08
 
 ### Goal
 
@@ -2936,6 +2936,10 @@ make check-branch
   MiniLM page-aware v2 aggregate before downstream experiment no-go decisions
   cite it.
 
+### Blocker Update — 2026-06-08
+
+- Blocked by T-2026-0076 outcome: the current page-aware MiniLM aggregate is not comparable to the hashing backup and shows doc-ranking collapse. Wait for same-stack page-aware MiniLM retrieval provenance/remeasurement before optimization or budget-envelope conclusions.
+
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md`](../docs/plans/T-2026-0030-real100-v2-latency-cost-budget-envelope.md)
@@ -2965,11 +2969,11 @@ make check-branch
 
 - ID: T-2026-0031
 - Title: Parent and section-window retrieval experiment
-- Status: ready
+- Status: blocked
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-29
+- Last updated: 2026-06-08
 
 ### Goal
 
@@ -3021,6 +3025,10 @@ make check-branch
 - Fresh MiniLM page-aware `real100_v2` baseline aggregate before any
   parent/window winner or no-go claim.
 
+### Blocker Update — 2026-06-08
+
+- Blocked by T-2026-0076 outcome: the current page-aware MiniLM aggregate is not comparable to the hashing backup and shows doc-ranking collapse. Wait for same-stack page-aware MiniLM retrieval provenance/remeasurement before optimization or budget-envelope conclusions.
+
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0031-parent-section-window-retrieval-experiment.md`](../docs/plans/T-2026-0031-parent-section-window-retrieval-experiment.md)
@@ -3031,11 +3039,11 @@ make check-branch
 
 - ID: T-2026-0032
 - Title: Reranker candidate-budget experiment
-- Status: ready
+- Status: blocked
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-29
+- Last updated: 2026-06-08
 
 ### Goal
 
@@ -3089,6 +3097,10 @@ make check-branch
   the prior hashing/page-0 baseline cannot support the retained no-winner
   conclusion.
 
+### Blocker Update — 2026-06-08
+
+- Blocked by T-2026-0076 outcome: the current page-aware MiniLM aggregate is not comparable to the hashing backup and shows doc-ranking collapse. Wait for same-stack page-aware MiniLM retrieval provenance/remeasurement before optimization or budget-envelope conclusions.
+
 ### Related Plan / Issue / PR Links
 
 - Plan: [`docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md`](../docs/plans/T-2026-0032-reranker-candidate-budget-experiment.md)
@@ -3135,11 +3147,11 @@ make check-branch
 
 - ID: T-2026-0033
 - Title: Context packing and citation ordering experiment
-- Status: ready
+- Status: blocked
 - Priority: P1
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-05-27
-- Last updated: 2026-05-29
+- Last updated: 2026-06-08
 
 ### Goal
 
@@ -3196,6 +3208,10 @@ make check-branch
 - Reopened follow-up: rerun the screening on the MiniLM page-aware v2 index;
   the prior hashing/page-0 baseline cannot support the retained
   `latency_regression` conclusion.
+
+### Blocker Update — 2026-06-08
+
+- Blocked by T-2026-0076 outcome: the current page-aware MiniLM aggregate is not comparable to the hashing backup and shows doc-ranking collapse. Wait for same-stack page-aware MiniLM retrieval provenance/remeasurement before optimization or budget-envelope conclusions.
 
 ### Related Plan / Issue / PR Links
 
@@ -5400,11 +5416,11 @@ make check-branch
 
 - ID: T-2026-0076
 - Title: Verify real100_v2 page-aware retrieval integrity (embedding parity + provenance)
-- Status: ready
+- Status: done
 - Priority: P0
 - Owner role: Implementer -> Benchmark Auditor -> Privacy Auditor -> Reviewer
 - Created: 2026-06-02
-- Last updated: 2026-06-02
+- Last updated: 2026-06-08
 
 ### Goal
 
@@ -5436,11 +5452,15 @@ which are meaningless while doc-recall is ~12%.
 
 ### Acceptance Criteria
 
-- [ ] Named root cause for the doc-recall collapse with paired `real100_v2`
-  evidence (aggregate-only).
-- [ ] Embedding/retrieval provenance field present in `eval_summary` and surfaced
-  (aggregate-only) so the diagnostic renderer can record it.
-- [ ] Decision recorded whether page-aware chunking is kept, reverted, or re-tuned.
+- [x] Named root cause for the doc-recall collapse with paired `real100_v2`
+  evidence (aggregate-only): the page-aware MiniLM run has a doc-ranking collapse,
+  not only chunk-id instability, and the hashing backup is not a comparable
+  baseline because retrieval stack fields changed.
+- [x] Embedding/retrieval provenance field present in future `eval_summary`
+  manifests and surfaced by the aggregate collapse diagnosis.
+- [x] Decision recorded: do not revert or retune page-aware chunking in this
+  task; block downstream optimization until same-stack page-aware MiniLM
+  retrieval provenance/remeasurement is available.
 
 ### Validation Commands
 
@@ -5461,9 +5481,19 @@ make check-branch
 
 ### Related Plan / Issue / PR Links
 
-- Plan: TBD
-- Issue: TBD (created when task starts)
+- Plan: [`docs/plans/T-2026-0076-real100-v2-retrieval-collapse-diagnosis.md`](../docs/plans/T-2026-0076-real100-v2-retrieval-collapse-diagnosis.md)
+- Issue: [#2751](https://github.com/hskim-solv/BidMate-DocAgent/issues/2751)
 - PR: TBD
+
+
+
+### Completion Evidence — 2026-06-08
+
+- Generated aggregate JSON: `reports/real100_v2/retrieval_collapse_diagnosis.aggregate.json`.
+- Generated reviewer Markdown: `docs/evaluation/real100_v2-retrieval-collapse-diagnosis.md`.
+- Aggregate diagnosis: `doc_ranking_collapse_not_chunk_id_only`; baseline comparability `not_comparable_stack_changed`.
+- Current page-aware vs hashing backup: `doc_hit_at_5` 0.106618 vs 0.529412; `doc_hit_at_8` 0.121324 vs 0.613971; `chunk_hit_at_5` 0.011029 vs 0.375.
+- Privacy posture: aggregate-only; no raw case rows, prompts, answers, evidence, doc IDs, chunk IDs, or text previews emitted.
 
 ### Notes
 

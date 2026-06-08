@@ -99,5 +99,30 @@ class RunManifestVersioningTest(unittest.TestCase):
         self.assertFalse(manifest["privacy"]["exact_local_paths_committed"])
 
 
+    def test_retrieval_provenance_fields_from_run_config(self) -> None:
+        manifest = compute_run_manifest(
+            CONFIG_PATH,
+            {"chunks": []},
+            run_config={
+                "retrieval_backend": "hybrid",
+                "retrieval_mode": "parent_section",
+                "top_k": 8,
+                "rerank": False,
+                "rrf_k": 60,
+                "bm25_backend": "okapi",
+                "bm25_tokenizer": "regex",
+                "bm25_stopword_profile": "shared",
+            },
+        )
+
+        self.assertEqual(manifest["retrieval_backend"], "hybrid")
+        self.assertEqual(manifest["retrieval_mode"], "parent_section")
+        self.assertEqual(manifest["retrieval_top_k"], 8)
+        self.assertFalse(manifest["retrieval_rerank"])
+        self.assertEqual(manifest["rrf_k"], 60)
+        self.assertEqual(manifest["bm25_backend"], "okapi")
+        self.assertEqual(manifest["bm25_tokenizer"], "regex")
+        self.assertEqual(manifest["bm25_stopword_profile"], "shared")
+
 if __name__ == "__main__":
     unittest.main()
