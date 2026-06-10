@@ -31,7 +31,7 @@ Pillow>=12.2.0
 opencv-python-headless>=4.13.0.92,<4.14
 fastapi>=0.136.3,<1.0
 uvicorn[standard]>=0.27,<1.0
-streamlit>=1.37,<2.0
+streamlit>=1.58.0,<2.0
 # ADR 0031 / issue #486 — Korean morpheme tokenizer for the additive
 # kiwi BM25 path. Lazy-imported (korean_lexicon.kiwi_tokens returns
 # ``None`` when the wheel is missing → silent fallback to regex
