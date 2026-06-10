@@ -37,7 +37,7 @@ ruff>=0.15.12
 # honors `BIDMATE_PYTEST_SPLITS` + `BIDMATE_PYTEST_SHARD` env vars and
 # passes `--splits N --group K` to pytest. Local runs without those env
 # vars (default) skip --splits entirely. 25min CI wall-clock → ~3-4min.
-pytest-split>=0.10
+pytest-split>=0.11.0
 # Issue #1826 — property/metamorphic retrieval invariants
 # (tests/test_retrieval_invariants_property.py). Hypothesis drives the
 # metamorphic relations (determinism INV-2, chunk-order permutation INV-3)
