@@ -57,7 +57,7 @@ jobs:
       PYTEST_ADDOPTS: "-m 'slow'"
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # PR head on a labeled run; the triggering ref (default branch on
           # schedule, the dispatched ref on workflow_dispatch) otherwise.
